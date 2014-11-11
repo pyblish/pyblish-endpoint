@@ -1,4 +1,4 @@
-pyblish-endpoint
+Pyblish Endpoint
 ================
 
-Integration endpoint for externally running interfaces
+Integration endpoint for externally running interfaces.
