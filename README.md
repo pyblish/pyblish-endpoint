@@ -12,7 +12,7 @@ Communication between a host and frontend occurs via this interface. In a nutshe
 
 ![Endpoint Schematic][schematic]
 
-The GUI sends requests to a host by first going through an endpoint.
+The frontend sends requests to a host by first going through an endpoint.
 
 However to fully encapsulate a frontend from implementation details of both Pyblish and host, there is the *service*.
 
