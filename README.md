@@ -50,7 +50,7 @@ class EndpointService(object):
         }
 ```
 
-As frontends developer wider requirements, this interface will expand with both mandatory and optional methods, ultimately facilitating for a separation between frontend and Pyblish; regardless of its host.
+As frontends develop wider requirements, this interface will expand with both mandatory and optional methods, ultimately facilitating for a separation between frontend and Pyblish; regardless of its host.
 
 ### Examples
 

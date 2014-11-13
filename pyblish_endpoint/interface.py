@@ -38,7 +38,6 @@ class Instance(flask.ext.restful.Resource):
     def get(self):
         """Return all available instances"""
         instances = service.current_service().instances()
-        print "# GET /instance = Instances: %s #" % instances
         return instances
 
 
