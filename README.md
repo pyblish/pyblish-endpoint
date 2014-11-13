@@ -20,7 +20,7 @@ However to fully encapsulate a frontend from implementation details of both Pybl
 
 ![Endpoint Service][service]
 
-The *service* acts as a layer inbetween a host and Endpoint so as to provide Endpoint with a common interface to Pyblish, without knowing about the internals of what has to happen in order for a host to perform the requested operations.
+The *service* acts as a layer inbetween a host and Endpoint so as to provide Endpoint with a common interface to Pyblish, relieving Endpoint from knowing about the internals of what has to happen in order for a host to perform the requested operations.
 
 **Host Integration**
 
