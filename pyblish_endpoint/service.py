@@ -16,7 +16,17 @@ to users.
 
 """
 
+import os
+import sys
 import abc
+import time
+import getpass
+import pyblish
+import logging
+
+from version import version
+
+log = logging.getLogger("endpoint")
 
 
 class EndpointService(object):
@@ -24,6 +34,27 @@ class EndpointService(object):
 
     __metaclass__ = abc.ABCMeta
     _current = None
+
+    def system(self):
+        """Confirm connection and return system state"""
+
+        executable = sys.executable
+        basename = os.path.basename(executable)
+        name, _ = os.path.splitext(basename)
+
+        return {
+            "host": name,
+            "port": int(os.environ.get("ENDPOINT_PORT", -1)),
+            "user": getpass.getuser(),
+            "connectTime": time.time()
+        }
+
+    def versions(self):
+        return {
+            "pyblishVersion": pyblish.version,
+            "endpointVersion": version,
+            "pythonVersion": sys.version,
+        }
 
     @abc.abstractmethod
     def instances(self):
@@ -37,25 +68,19 @@ class EndpointService(object):
         return []
 
     @abc.abstractmethod
-    def publish(self):
-        """Perform publish
+    def instance_data(self, instance_id):
+        pass
 
-        Returns
-            A status message
-
-        """
-
-        return {
-            "message": "success",
-            "status": 200
-        }
+    @abc.abstractmethod
+    def instance_nodes(self, instance_id):
+        pass
 
 
 def current_service():
     return EndpointService._current
 
 
-def register_service(service):
+def register_service(service, force=False):
     """Register service
 
     The service will be used by the endpoint for host communication
@@ -63,15 +88,15 @@ def register_service(service):
 
     Arguments:
         service (EndpointService): Service to register
+        force (bool): Overwrite any existing service
 
     """
 
-    print "Registering: %s" % service
-
-    if EndpointService._current is not None:
+    if EndpointService._current is not None and force is False:
         raise ValueError("An existing service was found, "
                          "use deregister_service to remove it")
     EndpointService._current = service()
+    log.info("Registering: %s" % service)
 
 
 def deregister_service(service=None):

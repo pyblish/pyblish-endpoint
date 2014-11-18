@@ -1,89 +1,101 @@
+"""Pyblish Endpoint Server
+
+| Endpoint                | Description
+|-------------------------|--------------
+| /processes              | List processes
+| /processes/<id>         | Query process
+| /instances              | List instances
+| /instances/<id>         | Query instance
+| /instances/<id>/nodes   | List nodes
+| /instances/<id>/data    | Query and manipulate data
+
+
+"""
+
 # Standard library
-import threading
+import os
+import sys
+import logging
 
-# Local library
-import lib
-lib.register_vendor()
+log = logging.getLogger("endpoint")
 
-import service as service_
-import interface
+# Register vendor packages
+package_dir = os.path.dirname(__file__)
+vendor_dir = os.path.join(package_dir, "vendor")
+sys.path.insert(0, vendor_dir)
 
 # Dependencies
 import flask
 import flask.ext.restful
-import requests
 
+# Local library
+import resource
 
 app = flask.Flask(__name__)
 api = flask.ext.restful.Api(app)
+resource.setup_message_queue()
 
-api.add_resource(interface.Instance, "/instance")
-api.add_resource(interface.Publish, "/publish")
-
-PORT = 6000
-
-
-def start(service, port=None, safe=False):
-    """Start server
-
-    Arguments:
-        service (EndpointService): Host integration
-        safe (bool): Ensure there is no existing server already running
-
-    """
-
-    service_.register_service(service)
-
-    if safe:
-        stop()
-
-    if port:
-        global PORT
-        PORT = port
-
-    def run():
-        app.run(port=PORT)
-
-    thread = threading.Thread(target=run)
-    thread.daemon = True
-    thread.start()
-    print "Running Endpoint @ port %i.." % PORT
-
-    return thread
+prefix = "/pyblish/v0.1"
+resource_map = {
+    "/processes": resource.ProcessesListApi,
+    "/processes/<process_id>": resource.ProcessesApi,
+    "/application": resource.ApplicationApi,
+    "/instances": resource.InstancesListApi,
+    "/instances/<instance_id>": resource.InstancesApi,
+    "/instances/<instance_id>/nodes": resource.NodesListApi,
+    "/instances/<instance_id>/data": resource.DataListApi,
+    "/instances/<instance_id>/data/<data_id>": resource.DataApi,
+}
 
 
-def stop():
-    try:
-        requests.post("http://127.0.0.1:%i/shutdown" % PORT)
-    except:
-        pass
-
-
-def restart():
-    stop()
-    start()
-
-
-def _shutdown_server():
-    """Shutdown the currently running server"""
-    func = flask.request.environ.get("werkzeug.server.shutdown")
-    if func is not None:
-        func()
+for _endpoint, _resource in resource_map.items():
+    api.add_resource(_resource, prefix + _endpoint)
 
 
 @app.route("/shutdown", methods=["POST"])
-def _shutdown():
+def shutdown():
     """Shutdown server
+
     Utility endpoint for remotely shutting down server.
-    Usage:
-        $ curl -X GET http://127.0.0.1:6000/shutdown
+
+    :status 200: Server successfully shutdown
+    :status 400: Could not shut down
+
+    :>json bool ok: Operation status, not returned on error
+    :>json string message: Error message
+
+    **Example Request**
+
+    .. sourcecode:: http
+
+        GET /shutdown
+        Host: localhost
+        Accept: application/json
+
+    **Example Response**
+
+    .. sourcecode:: http
+
+        HTTP/1.1 200 OK
+        Vary: Accept
+        Content-Type: application/json
+
+        {"ok": true}
+
     """
 
-    print "Server shutting down..."
-    _shutdown_server()
-    print "Server stopped"
-    return True
+    log.info("Server shutting down...")
+
+    func = flask.request.environ.get("werkzeug.server.shutdown")
+    if func is not None:
+        func()
+    else:
+        return {"message": "Could not shutdown server"}, 400
+
+    log.info("Server stopped")
+
+    return {"ok": True}, 200
 
 
 if __name__ == '__main__':
-    app.run(port=PORT, debug=True)
+    app.run(port=6000, debug=True)
