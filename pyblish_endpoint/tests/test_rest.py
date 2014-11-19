@@ -1,10 +1,28 @@
-
+import time
 import json
-
+import logging
 from nose.tools import *
-from pyblish_endpoint import tests
 
-app = tests.app
+from pyblish_endpoint import server
+from pyblish_endpoint import service
+
+app, api = server.create_app()
+app.config["TESTING"] = True
+client = app.test_client()
+client.testing = True
+
+log = logging.getLogger("endpoint")
+
+
+service.register_service(service.MockService, force=True)
+
+
+def mock_instances_teardown():
+    service.MockService.NUM_INSTANCES = 2
+
+
+def mock_instances_setup():
+    service.MockService.NUM_INSTANCES = 0
 
 
 # Helper functions
@@ -29,7 +47,7 @@ def load_data(response):
 
 
 def request(verb, address, *args, **kwargs):
-    func = getattr(app, verb.lower())
+    func = getattr(client, verb.lower())
     return func("/pyblish/v0.1" + address, *args, **kwargs)
 
 
@@ -50,6 +68,17 @@ def test_instances():
 
     instance = data[0]
     check_keys(instance, ["name", "family", "objName"])
+
+
+@with_setup(mock_instances_setup, mock_instances_teardown)
+def test_no_instances():
+    """When there are no instances, it should still return an array"""
+    response = request("GET", "/instances")
+    check_content_type(response)
+    check_status(response, 200)
+
+    data = load_data(response)
+    eq_(isinstance(data, list), True)
 
 
 def test_instance():
@@ -114,7 +143,7 @@ def test_post_process():
     check_content_type(response)
     check_status(response, 201)
 
-    data = json.loads(response.data)
+    data = load_data(response)
 
     check_keys(data, ["process_id", "_next"])
 
@@ -135,7 +164,7 @@ def test_get_process():
     check_content_type(response)
     check_status(response, 201)
 
-    data = json.loads(response.data)
+    data = load_data(response)
     process_id = data["process_id"]
 
     response = request("GET", "/processes/%s" % process_id)
@@ -143,7 +172,7 @@ def test_get_process():
 
     # Expected keys at included in returned data (at least)
     data = json.loads(response.data)
-    check_keys(data, ["process_id", "running", "messages"])
+    check_keys(data, ["process_id", "running"])
 
 
 def test_application_stats():
@@ -152,7 +181,147 @@ def test_application_stats():
     check_content_type(response)
     check_status(response, 200)
 
-    data = json.loads(response.data)
+    data = load_data(response)
     check_keys(data, ["host", "port",
                       "pyblishVersion", "endpointVersion",
                       "pythonVersion", "user", "connectTime"])
+
+
+def test_process_logging():
+    """Each process maintains its own log"""
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+
+    # There should be messages in the queue by now
+    response = request("GET", "/processes/%s" % data["process_id"])
+    check_content_type(response)
+    check_status(response, 200)
+
+    data = load_data(response)
+    check_keys(data, ["process_id", "running"])
+
+
+@timed(1.5)
+def test_post_performance():
+    """Posting should be fast"""
+    for x in xrange(100):
+        response = request("POST", "/processes",
+                           data={"instance": "Peter%02d" % x,
+                                 "plugin": "ValidateNamespace"})
+        check_content_type(response)
+        check_status(response, 201)
+
+
+def test_server_shutdown():
+    """Can't shutdown from test, but the call works as expected"""
+    response = request("POST", "/application/shutdown")
+    check_content_type(response)
+    check_status(response, 400)
+
+
+def test_list_processes():
+    """Listing processes works fine"""
+
+    # Make a process
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+    process_id = data["process_id"]
+
+    # This process should now be gettable
+    response = request("GET", "/processes")
+    check_content_type(response)
+    check_status(response, 200)
+
+    data = load_data(response)
+    matches = filter(lambda p: p["process_id"] == process_id, data)
+    eq_(len(matches), 1)
+
+
+def test_modify_process():
+    """PUT /processes/<process_id> is not yet implemented"""
+
+    # Make a process
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+    process_id = data["process_id"]
+
+    response = request("PUT", "/processes/%s" % process_id,
+                       data={"running": False})
+    check_content_type(response)
+    check_status(response, 501)
+
+
+def test_delete_process():
+    """DELETE /processes/<process_id> is not yet implemented"""
+
+    # Make a process
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+    process_id = data["process_id"]
+
+    response = request("DELETE", "/processes/%s" % process_id)
+    check_content_type(response)
+    check_status(response, 501)
+
+
+def test_logs():
+    """GET /processes/<process_id>/logs yields log messages"""
+
+    # First make a process, then look at it's logging messages
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+    process_id = data["process_id"]
+
+    # Look at the log, but make sure the process has
+    # completed running first.
+    is_running = True
+    count = 3
+    while is_running and count >= 0:
+        time.sleep(0.1)
+        count -= 1
+
+        response = request("GET", "/processes/%s" % process_id)
+        check_content_type(response)
+        check_status(response, 200)
+        data = load_data(response)
+        is_running = data["running"]
+
+    if is_running:
+        raise RuntimeError("Process took too long")
+
+    response = request("GET", "/processes/%s/logs" % process_id)
+    check_content_type(response)
+    check_status(response, 200)
+
+    messages = load_data(response)
+    eq_(isinstance(messages, list), True)
+    eq_(len(messages) > 0, True)
+    eq_(isinstance(messages[0], basestring), True)
+
+    # Log should be empty now
+    response = request("GET", "/processes/%s/logs" % process_id)
+    check_content_type(response)
+    check_status(response, 200)
+
+    messages = load_data(response)
+    assert len(messages) == 0, messages
