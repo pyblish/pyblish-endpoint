@@ -1,7 +1,7 @@
 """Endpoint resources
 
 Attributes:
-    message_queue: Temporarily stored logging messages
+    queue: Logging messages, per process
     threads: Container of threads, stored under their unique ID
     log: Current logger
 
@@ -20,36 +20,40 @@ import flask.ext.restful.reqparse
 # Local library
 from service import current_service
 
-message_queue = Queue.Queue(maxsize=100)
+queues = {}
 threads = {}
 
 log = logging.getLogger("endpoint")
 
 
 class MessageHandler(logging.Handler):
-    """Intercept all logging messages and store them in a queue
+    """Intercept logging and store them in a queue per process
 
-    The queue is emptied upon calling GET /process
+    The queue is emptied upon calling GET /processes/<process_id>
 
     """
 
+    def __init__(self, thread, queue, *args, **kwargs):
+        super(MessageHandler, self).__init__(*args, **kwargs)
+        self.thread = thread
+        self.queue = queue
+
     def emit(self, record):
-        try:
-            message_queue.put_nowait(record)
-        except Queue.Full:
-            # Discard last record, and append warning message
-            message_queue.get()
+        # Do not record server messages
+        if record.name in ["werkzeug"]:
+            return
 
-            record = logging.LogRecord()
-            record.msg = "WARNING: Message queue full"
-            message_queue.put(record)
+        # Only store records from current thread
+        # WARNING: This won't work in Maya, because
+        # Maya insists on running things in the main thread
+        # which causes threadName to always be "MainThread"
 
+        # if record.threadName == self.thread:
+        #     self.queue.put(record)
 
-def setup_message_queue():
-    handler = MessageHandler()
-    log = logging.getLogger()
-    log.addHandler(handler)
-    log.setLevel(logging.INFO)
+        # As a workaround, record everything.
+        # NOTE: This is O(n) and thus much slower
+        self.queue.put_nowait(record)
 
 
 def unique_id():
@@ -66,48 +70,49 @@ def unique_id():
     return uuid.uuid4().hex[:5]
 
 
-def shutdown():
-    """Shutdown server
+class ApplicationShutdownApi(flask.ext.restful.Resource):
+    def post(self):
+        """Shutdown server
 
-    Utility resource for remotely shutting down server.
+        Utility resource for remotely shutting down server.
 
-    :status 200: Server successfully shutdown
-    :status 400: Could not shut down
+        :status 200: Server successfully shutdown
+        :status 400: Could not shut down
 
-    :>json bool ok: Operation status, not returned on error
-    :>json string message: Error message
+        :>json bool ok: Operation status, not returned on error
+        :>json string message: Error message
 
-    **Example Request**
+        **Example Request**
 
-    .. sourcecode:: http
+        .. sourcecode:: http
 
-        POST /shutdown
-        Host: localhost
-        Accept: application/json
+            POST /shutdown
+            Host: localhost
+            Accept: application/json
 
-    **Example Response**
+        **Example Response**
 
-    .. sourcecode:: http
+        .. sourcecode:: http
 
-        HTTP/1.1 200 OK
-        Vary: Accept
-        Content-Type: application/json
+            HTTP/1.1 200 OK
+            Vary: Accept
+            Content-Type: application/json
 
-        {"ok": true}
+            {"ok": true}
 
-    """
+        """
 
-    log.info("Server shutting down...")
+        log.info("Server shutting down...")
 
-    func = flask.request.environ.get("werkzeug.server.shutdown")
-    if func is not None:
-        func()
-    else:
-        return {"message": "Could not shutdown server"}, 400
+        func = flask.request.environ.get("werkzeug.server.shutdown")
+        if func is not None:
+            func()
+        else:
+            return {"message": "Could not shutdown server"}, 400
 
-    log.info("Server stopped")
+        log.info("Server stopped")
 
-    return {"ok": True}, 200
+        return {"ok": True}, 200
 
 
 class ApplicationApi(flask.ext.restful.Resource):
@@ -186,26 +191,48 @@ class ProcessesListApi(flask.ext.restful.Resource):
 
         parser = flask.ext.restful.reqparse.RequestParser()
 
-        parser.add_argument('instance',
+        parser.add_argument("instance",
                             type=str,
                             required=True,
                             help="Instance can't be blank")
-        parser.add_argument('plugin',
+        parser.add_argument("plugin",
                             type=str,
                             required=True,
                             help="Plugin can't be blank")
 
-        args = parser.parse_args()
+        kwargs = parser.parse_args()
 
-        task = current_service().process
+        def task(instance, plugin):
+            try:
+                current_service().process(instance, plugin)
+            except ValueError as e:
+                log.error("Processing failure for %s|%s: %s"
+                          % (instance, plugin, e))
 
         process_id = unique_id()
 
         # Spawn task in new thread
-        thread = threading.Thread(name=process_id, target=task, args=args)
+        thread = threading.Thread(
+            name=process_id,
+            target=task,
+            kwargs=kwargs)
         thread.deamon = True
         thread.start()
 
+        # Setup logger
+        queue = Queue.Queue()
+        handler = MessageHandler(thread=thread.name, queue=queue)
+        # handler.setLevel(logging.DEBUG)
+
+        # Logger is deleted during GET /processes/<process_id>
+        log = logging.getLogger()
+        log.addHandler(handler)
+        # log.setLevel(logging.DEBUG)
+
+        # Store references
+        # Note: This is not stateless and violates REST and possibly
+        # web integration as a whole. How else can we do this?
+        queues[process_id] = [queue, handler]
         threads[process_id] = thread
 
         return {"process_id": process_id,
@@ -253,22 +280,7 @@ class ProcessesApi(flask.ext.restful.Resource):
 
             {
                 "process_id": 12345,
-                "running": true,
-                "messages": [
-                    {
-                        "name", "endpoint",
-                        "msg", "Running first pass..",
-                        "levelname", "INFO",
-                        "filename", "some_module.py",
-                        ...
-                    },
-                    {
-                        "name", "endpoint",
-                        "msg", "Almost done..",
-                        "levelname", "INFO",
-                        "filename", "some_module.py",
-                    }
-                ]
+                "running": true
             }
 
         """
@@ -278,14 +290,8 @@ class ProcessesApi(flask.ext.restful.Resource):
         except KeyError:
             return {"message": "%s did not exist" % process_id}, 404
 
-        messages = []
-        while not message_queue.empty():
-            record = message_queue.get()
-            messages.append(record.__dict__)
-
         return {"process_id": process_id,
-                "running": thread.is_alive(),
-                "messages": messages}, 200
+                "running": thread.is_alive()}, 200
 
     def put(self, process_id):
         """Modify a process
@@ -314,6 +320,8 @@ class ProcessesApi(flask.ext.restful.Resource):
 
         """
 
+        return {"ok": False}, 501  # Not implemented
+
         try:
             thread = threads.pop(process_id)
         except KeyError:
@@ -322,7 +330,53 @@ class ProcessesApi(flask.ext.restful.Resource):
         if not thread.is_alive():
             return {"message": "Process is not currently running"}, 406
 
-        return {"ok": False}, 501  # Not implemented
+        return {"ok": True}, 200
+
+
+class ProcessesLogsApi(flask.ext.restful.Resource):
+    def get(self, process_id):
+        """Get log messages for instance
+
+        :status 200: Log messages returned
+        :status 404: process_id was not found
+
+        :>jsonarr string message: Logged message
+        :>jsonarr string time: Time of event
+
+        :<json string format: Python format string, e.g.
+            '%(level)s %(message)s'
+
+        """
+
+        parser = flask.ext.restful.reqparse.RequestParser()
+        parser.add_argument("format", default="%(asctime)s "
+                                              "%(levelname)s "
+                                              "%(message)s")
+
+        kwargs = parser.parse_args()
+
+        formatter = logging.Formatter(kwargs["format"])
+
+        messages = []
+
+        try:
+            process_queue, process_handler = queues[process_id]
+        except KeyError:
+            return messages, 200
+
+        while not process_queue.empty():
+            record = process_queue.get()
+            message = formatter.format(record)
+            print "Getting %s from queue" % message
+            messages.append(message)
+
+        # Clean-up queue in case thread is dead
+        thread = threads[process_id]
+        if not thread.is_alive():
+            queues.pop(process_id)
+            log.removeHandler(process_handler)
+
+        return messages, 200
 
 
 class InstancesListApi(flask.ext.restful.Resource):
@@ -334,6 +388,9 @@ class InstancesListApi(flask.ext.restful.Resource):
         :>jsonarr string name: Name of instance
         :>jsonarr string objName: Name of instance
         :>jsonarr string family: All contained nodes of instance
+        :>jsonarr bool publish: Should instance be published?
+        :>jsonarr array nodes: Array of included nodes
+        :>jsonarr obj data: Instance metadata
 
         **Example response**
 
@@ -357,7 +414,9 @@ class InstancesListApi(flask.ext.restful.Resource):
 
         """
 
-        return current_service().instances(), 200
+        instances = current_service().instances()
+        assert isinstance(instances, list)
+        return instances, 200
 
 
 class InstancesApi(flask.ext.restful.Resource):
@@ -371,10 +430,13 @@ class InstancesApi(flask.ext.restful.Resource):
 
         """
 
-        return {
-            "nodes": "/nodes",
-            "data": "/data"
-        }, 200
+        instance = current_service().instance(instance_id)
+        instance["_links"] = [
+            {"rel": "/nodes"},
+            {"rel": "/data"}
+        ]
+
+        return instance, 200
 
 
 class NodesListApi(flask.ext.restful.Resource):
