@@ -67,9 +67,25 @@ class EndpointService(object):
 
         return []
 
+    def instance(self, name):
+        instances = self.instances()
+        try:
+            return filter(lambda i: i["name"] == name, instances)[0]
+        except IndexError:
+            return None
+
 
 class MockService(EndpointService):
-    SLEEP = 0
+    """Service for testing
+
+    Attributes:
+        SLEEP_DURATION: Fake processing delay, in milliseconds
+        NUM_INSTANCES: Fake amount of available instances (max: 2)
+
+    """
+
+    SLEEP_DURATION = 0
+    NUM_INSTANCES = 2
 
     def instances(self):
         instances = [
@@ -77,6 +93,7 @@ class MockService(EndpointService):
                 "name": "Peter01",
                 "objName": "Peter01:pointcache_SEL",
                 "family": "napoleon.asset.rig",
+                "publish": True,
                 "nodes": [
                     {"name": "node1"},
                     {"name": "node2"},
@@ -93,25 +110,21 @@ class MockService(EndpointService):
             {
                 "name": "Richard05",
                 "objName": "Richard05:pointcache_SEL",
-                "family": "napoleon.animation.rig"
+                "family": "napoleon.animation.rig",
+                "publish": True,
+                "nodes": [],
+                "data": {}
             }
         ]
 
-        return instances
-
-    def instance(self, name):
-        instances = self.instances()
-        try:
-            return filter(lambda i: i["name"] == name, instances)[0]
-        except IndexError:
-            return None
+        return instances[:self.NUM_INSTANCES]
 
     def process(self, instance, plugin):
-        if self.SLEEP:
+        if self.SLEEP_DURATION:
             log.info("Pretending it takes %s seconds "
-                     "to complete.." % self.SLEEP)
+                     "to complete.." % self.SLEEP_DURATION)
 
-        increment_sleep = self.SLEEP / 3.0
+        increment_sleep = self.SLEEP_DURATION / 3.0
 
         time.sleep(increment_sleep)
         log.info("Running first pass..")
@@ -142,8 +155,9 @@ def register_service(service, force=False):
     """
 
     if EndpointService._current is not None and force is False:
-        raise ValueError("An existing service was found, "
-                         "use deregister_service to remove it")
+        raise ValueError("An existing service was found: %s, "
+                         "use deregister_service to remove it"
+                         % type(EndpointService._current).__name__)
     EndpointService._current = service()
     log.info("Registering: %s" % service)
 
