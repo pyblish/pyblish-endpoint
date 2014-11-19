@@ -3,12 +3,11 @@
 | Endpoint                | Description
 |-------------------------|--------------
 | /processes              | List processes
-| /processes/<id>         | Query process
+| /processes/<id>         | Query and manipulate process
 | /instances              | List instances
 | /instances/<id>         | Query instance
 | /instances/<id>/nodes   | List nodes
 | /instances/<id>/data    | Query and manipulate data
-
 
 """
 
@@ -29,6 +28,7 @@ import flask
 import flask.ext.restful
 
 # Local library
+import service
 import resource
 
 app = flask.Flask(__name__)
@@ -47,55 +47,46 @@ resource_map = {
     "/instances/<instance_id>/data/<data_id>": resource.DataApi,
 }
 
+endpoint_map = {
+    "/processes/<process_id>":          "process",
+    "/processes":                       "processes",
+    "/application":                     "application",
+    "/instances/<instance_id>":         "instance",
+    "/instances":                       "instances",
+    "/instances/<instance_id>/nodes":   "instanceNodes",
+    "/instances/<instance_id>/data":    "instanceData"
+}
 
-for _endpoint, _resource in resource_map.items():
-    api.add_resource(_resource, prefix + _endpoint)
+# Map resources to URIs
+for uri, _resource in resource_map.items():
+    endpoint = endpoint_map.get(uri)
+    api.add_resource(_resource, prefix + uri, endpoint=endpoint)
+
+# Map utility URIs
+app.route("/shutdown", methods=["POST"])(resource.shutdown)
 
 
-@app.route("/shutdown", methods=["POST"])
-def shutdown():
-    """Shutdown server
+def start_debug_server(port, **kwargs):
+    formatter = logging.Formatter("%(levelname)-8s %(message)s")
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
 
-    Utility endpoint for remotely shutting down server.
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG)
 
-    :status 200: Server successfully shutdown
-    :status 400: Could not shut down
+    os.environ["ENDPOINT_PORT"] = str(port)
 
-    :>json bool ok: Operation status, not returned on error
-    :>json string message: Error message
-
-    **Example Request**
-
-    .. sourcecode:: http
-
-        GET /shutdown
-        Host: localhost
-        Accept: application/json
-
-    **Example Response**
-
-    .. sourcecode:: http
-
-        HTTP/1.1 200 OK
-        Vary: Accept
-        Content-Type: application/json
-
-        {"ok": true}
-
-    """
-
-    log.info("Server shutting down...")
-
-    func = flask.request.environ.get("werkzeug.server.shutdown")
-    if func is not None:
-        func()
-    else:
-        return {"message": "Could not shutdown server"}, 400
-
-    log.info("Server stopped")
-
-    return {"ok": True}, 200
+    service.MockService.SLEEP = 3
+    service.register_service(service.MockService)
+    app.run(debug=True, port=port)
 
 
 if __name__ == '__main__':
-    app.run(port=6000, debug=True)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=6000, help="Port to use")
+
+    args = parser.parse_args()
+
+    start_debug_server(**args.__dict__)

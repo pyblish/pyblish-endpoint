@@ -1,8 +1,9 @@
-"""RESTful resources of Endpoint
+"""Endpoint resources
 
 Attributes:
     message_queue: Temporarily stored logging messages
     threads: Container of threads, stored under their unique ID
+    log: Current logger
 
 """
 
@@ -22,6 +23,8 @@ from service import current_service
 message_queue = Queue.Queue(maxsize=100)
 threads = {}
 
+log = logging.getLogger("endpoint")
+
 
 class MessageHandler(logging.Handler):
     """Intercept all logging messages and store them in a queue
@@ -34,7 +37,8 @@ class MessageHandler(logging.Handler):
         try:
             message_queue.put_nowait(record)
         except Queue.Full:
-            message_queue.get()  # Discard last record
+            # Discard last record, and append warning message
+            message_queue.get()
 
             record = logging.LogRecord()
             record.msg = "WARNING: Message queue full"
@@ -60,6 +64,50 @@ def unique_id():
     """
 
     return uuid.uuid4().hex[:5]
+
+
+def shutdown():
+    """Shutdown server
+
+    Utility resource for remotely shutting down server.
+
+    :status 200: Server successfully shutdown
+    :status 400: Could not shut down
+
+    :>json bool ok: Operation status, not returned on error
+    :>json string message: Error message
+
+    **Example Request**
+
+    .. sourcecode:: http
+
+        POST /shutdown
+        Host: localhost
+        Accept: application/json
+
+    **Example Response**
+
+    .. sourcecode:: http
+
+        HTTP/1.1 200 OK
+        Vary: Accept
+        Content-Type: application/json
+
+        {"ok": true}
+
+    """
+
+    log.info("Server shutting down...")
+
+    func = flask.request.environ.get("werkzeug.server.shutdown")
+    if func is not None:
+        func()
+    else:
+        return {"message": "Could not shutdown server"}, 400
+
+    log.info("Server stopped")
+
+    return {"ok": True}, 200
 
 
 class ApplicationApi(flask.ext.restful.Resource):
@@ -128,6 +176,8 @@ class ProcessesListApi(flask.ext.restful.Resource):
         :param string plugin: Plug-in used for processing
 
         :>json string process_id: Unique id of process
+        :>json string _next: Link to where id may be used to
+            query about process
 
         :status 201: Process was successfully created
         :status 400: Missing argument(s)
@@ -158,7 +208,8 @@ class ProcessesListApi(flask.ext.restful.Resource):
 
         threads[process_id] = thread
 
-        return process_id, 201
+        return {"process_id": process_id,
+                "_next": "/processes/<process_id>"}, 201
 
 
 class ProcessesApi(flask.ext.restful.Resource):
@@ -311,10 +362,19 @@ class InstancesListApi(flask.ext.restful.Resource):
 
 class InstancesApi(flask.ext.restful.Resource):
     def get(self, instance_id):
+        """Query links to instance resources
+
+        :status 200: Links returned
+
+        :>json string nodes: Link to nodes of instance
+        :>json string data: Link to data of instance
+
+        """
+
         return {
             "nodes": "/nodes",
             "data": "/data"
-        }
+        }, 200
 
 
 class NodesListApi(flask.ext.restful.Resource):
@@ -328,10 +388,11 @@ class NodesListApi(flask.ext.restful.Resource):
 
         """
 
-        try:
-            nodes = current_service().instance_nodes(instance_id)
-        except KeyError:
+        instance = current_service().instance(instance_id)
+        if not instance:
             return {"message": "instance_id %s not found" % instance_id}, 404
+
+        nodes = instance.get("nodes", {})
 
         return nodes, 200
 
@@ -339,16 +400,28 @@ class NodesListApi(flask.ext.restful.Resource):
 class DataListApi(flask.ext.restful.Resource):
     """API for instance data
 
-    GET /instances/<id>/data
-    POST /instances/<id>/data
+    Each instance contains some amount of additional data, known
+    as metadata. This includes both internal data, such as it's
+    family, along with external - user customisable - data, such
+    as at which frame an animation is to start.
 
     """
 
     def get(self, instance_id):
-        try:
-            data = current_service().instance_data(instance_id)
-        except KeyError:
-            return {"message": "instance_id: %s not found" % instance_id}, 404
+        """Get data of instance
+
+        :status 200: Data was returned successfully
+        :status 404: instance_id was not found
+
+        :>json obj data: Available data returned as object
+
+        """
+
+        instance = current_service().instance(instance_id)
+        if not instance:
+            return {"message": "instance_id %s not found" % instance_id}, 404
+
+        data = instance.get("data", {})
 
         return data, 200
 

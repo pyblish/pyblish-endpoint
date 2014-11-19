@@ -60,20 +60,69 @@ class EndpointService(object):
     def instances(self):
         """Return list of instances
 
-        Returns
+        Returns:
             A list of dictionaries; one per instance
 
         """
 
         return []
 
-    @abc.abstractmethod
-    def instance_data(self, instance_id):
-        pass
 
-    @abc.abstractmethod
-    def instance_nodes(self, instance_id):
-        pass
+class MockService(EndpointService):
+    SLEEP = 0
+
+    def instances(self):
+        instances = [
+            {
+                "name": "Peter01",
+                "objName": "Peter01:pointcache_SEL",
+                "family": "napoleon.asset.rig",
+                "nodes": [
+                    {"name": "node1"},
+                    {"name": "node2"},
+                    {"name": "node3"}
+                ],
+                "data": {
+                    "identifier": "napoleon.instance",
+                    "minWidth": 800,
+                    "assetSource": "/server/assets/Peter",
+                    "destination": "/server/published/assets"
+                }
+            },
+
+            {
+                "name": "Richard05",
+                "objName": "Richard05:pointcache_SEL",
+                "family": "napoleon.animation.rig"
+            }
+        ]
+
+        return instances
+
+    def instance(self, name):
+        instances = self.instances()
+        try:
+            return filter(lambda i: i["name"] == name, instances)[0]
+        except IndexError:
+            return None
+
+    def process(self, instance, plugin):
+        if self.SLEEP:
+            log.info("Pretending it takes %s seconds "
+                     "to complete.." % self.SLEEP)
+
+        increment_sleep = self.SLEEP / 3.0
+
+        time.sleep(increment_sleep)
+        log.info("Running first pass..")
+
+        time.sleep(increment_sleep)
+        log.info("Almost done..")
+
+        time.sleep(increment_sleep)
+        log.info("Completed successfully!")
+
+        return True
 
 
 def current_service():

@@ -3,21 +3,25 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to Endpoint's documentation!
-====================================
+Documentation
+=============
 
-Contents:
+General
+-------
 
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
 
-   api
+    getting-started
+    requests-and-responses
 
 
-Indices and tables
-==================
+Resources
+---------
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+.. toctree::
+    :maxdepth: 2
+    
+    processes
+    instances
 

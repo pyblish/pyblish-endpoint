@@ -116,7 +116,7 @@ def test_post_process():
 
     data = json.loads(response.data)
 
-    eq_(isinstance(data, basestring), True)
+    check_keys(data, ["process_id", "_next"])
 
 
 def test_get_process():
@@ -135,7 +135,8 @@ def test_get_process():
     check_content_type(response)
     check_status(response, 201)
 
-    process_id = json.loads(response.data)
+    data = json.loads(response.data)
+    process_id = data["process_id"]
 
     response = request("GET", "/processes/%s" % process_id)
     check_status(response, 200)
