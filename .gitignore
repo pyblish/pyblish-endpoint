@@ -1,3 +1,4 @@
 docs/_*
 *.pyc
 cover
+.coverage
