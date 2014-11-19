@@ -7,4 +7,5 @@ handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
 log = logging.getLogger("endpoint")
-# log.addHandler(handler)
+log.addHandler(handler)
+log.setLevel(logging.WARNING)
