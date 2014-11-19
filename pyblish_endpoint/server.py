@@ -16,8 +16,6 @@ import os
 import sys
 import logging
 
-log = logging.getLogger("endpoint")
-
 # Register vendor packages
 package_dir = os.path.dirname(__file__)
 vendor_dir = os.path.join(package_dir, "vendor")
@@ -28,18 +26,18 @@ import flask
 import flask.ext.restful
 
 # Local library
-import service
+import service as service_mod
 import resource
 
-app = flask.Flask(__name__)
-api = flask.ext.restful.Api(app)
-resource.setup_message_queue()
+log = logging.getLogger("endpoint")
 
 prefix = "/pyblish/v0.1"
 resource_map = {
     "/processes": resource.ProcessesListApi,
     "/processes/<process_id>": resource.ProcessesApi,
+    "/processes/<process_id>/logs": resource.ProcessesLogsApi,
     "/application": resource.ApplicationApi,
+    "/application/shutdown": resource.ApplicationShutdownApi,
     "/instances": resource.InstancesListApi,
     "/instances/<instance_id>": resource.InstancesApi,
     "/instances/<instance_id>/nodes": resource.NodesListApi,
@@ -51,22 +49,37 @@ endpoint_map = {
     "/processes/<process_id>":          "process",
     "/processes":                       "processes",
     "/application":                     "application",
+    "/application/shutdown":            "application.shutdown",
     "/instances/<instance_id>":         "instance",
     "/instances":                       "instances",
-    "/instances/<instance_id>/nodes":   "instanceNodes",
-    "/instances/<instance_id>/data":    "instanceData"
+    "/instances/<instance_id>/nodes":   "instance.nodes",
+    "/instances/<instance_id>/data":    "instance.data"
 }
 
-# Map resources to URIs
-for uri, _resource in resource_map.items():
-    endpoint = endpoint_map.get(uri)
-    api.add_resource(_resource, prefix + uri, endpoint=endpoint)
 
-# Map utility URIs
-app.route("/shutdown", methods=["POST"])(resource.shutdown)
+def create_app():
+    log.debug("Creating app")
+    app = flask.Flask(__name__)
+    api = flask.ext.restful.Api(app)
+
+    # Map resources to URIs
+    log.debug("Mapping URIs")
+    for uri, _resource in resource_map.items():
+        endpoint = endpoint_map.get(uri)
+        api.add_resource(_resource, prefix + uri, endpoint=endpoint)
+
+    log.debug("App created")
+    return app, api
+
+
+def start_production_server(port, service, **kwargs):
+    service_mod.register_service(service)
+    app, api = create_app()
+    app.run(port=port)
 
 
 def start_debug_server(port, **kwargs):
+    # Log to console
     formatter = logging.Formatter("%(levelname)-8s %(message)s")
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
@@ -76,8 +89,10 @@ def start_debug_server(port, **kwargs):
 
     os.environ["ENDPOINT_PORT"] = str(port)
 
-    service.MockService.SLEEP = 3
-    service.register_service(service.MockService)
+    service_mod.MockService.SLEEP_DURATION = 3
+    service_mod.register_service(service_mod.MockService)
+
+    app, api = create_app()
     app.run(debug=True, port=port)
 
 
