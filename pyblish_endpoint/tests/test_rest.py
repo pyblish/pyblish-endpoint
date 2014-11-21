@@ -72,7 +72,7 @@ def load_data(response):
 
 def request(verb, address, *args, **kwargs):
     func = getattr(client, verb.lower())
-    return func("/pyblish/v0.1" + address, *args, **kwargs)
+    return func("/pyblish/v1" + address, *args, **kwargs)
 
 
 def init():
