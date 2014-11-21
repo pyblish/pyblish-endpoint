@@ -8,8 +8,11 @@ Attributes:
 """
 
 # Standard library
+import sys
+import json
 import uuid
 import logging
+import traceback
 import threading
 
 # Dependencies
@@ -69,6 +72,61 @@ def unique_id():
     return uuid.uuid4().hex[:5]
 
 
+def format_instance(instance):
+    return {
+        "name": instance.name,
+        "family": instance.data("family"),
+        "objName": instance.name,
+        "nodes": list(instance),
+        "data": instance.data(),
+        "publish": instance.data("publish")
+    }
+
+
+def format_plugin(plugin):
+    formatted = {
+        "name": plugin.__name__,
+        "version": plugin.version,
+        "requires": plugin.requires
+    }
+
+    for attr in ("hosts", "families"):
+        if hasattr(plugin, attr):
+            formatted[attr] = getattr(plugin, attr)
+
+    return formatted
+
+
+class ApplicationApi(flask.ext.restful.Resource):
+    """Application API
+
+    GET /application
+
+    """
+
+    def get(self):
+        """Return application statistics
+
+        :>json string host
+        :>json string port
+        :>json string pyblishVersion
+        :>json string endpointVersion
+        :>json string pythonVersion
+        :>json string user
+        :>json string connectTime
+
+        :status 200: Application statistics returned
+
+        """
+
+        data = {}
+
+        data.update(current_service().system())
+        data.update(current_service().versions())
+
+        return data, 200
+
+
 class ApplicationShutdownApi(flask.ext.restful.Resource):
     def post(self):
         """Shutdown server
@@ -114,37 +172,29 @@ class ApplicationShutdownApi(flask.ext.restful.Resource):
         return {"ok": True}, 200
 
 
-class ApplicationApi(flask.ext.restful.Resource):
-    """Application API
+class SessionApi(flask.ext.restful.Resource):
+    def post(self):
+        try:
+            status = current_service().init()
+        except Exception:
+            _, _, exc_tb = sys.exc_info()
+            tb = traceback.extract_tb(exc_tb)[-1]
+            return {"message": tb}, 500
 
-    GET /application
+        return {"ok": status}, 200
 
-    """
-
-    def get(self):
-        """Return application statistics
-
-        :>json string host
-        :>json string port
-        :>json string pyblishVersion
-        :>json string endpointVersion
-        :>json string pythonVersion
-        :>json string user
-        :>json string connectTime
-
-        :status 200: Application statistics returned
-
-        """
-
-        data = {}
-
-        data.update(current_service().system())
-        data.update(current_service().versions())
-
-        return data, 200
+    def delete(self):
+        pass
 
 
 class ProcessesListApi(flask.ext.restful.Resource):
+    """List processes API
+
+    GET /processes
+    POST /processes
+
+    """
+
     def get(self):
         """Get all currently running processes
 
@@ -235,6 +285,14 @@ class ProcessesListApi(flask.ext.restful.Resource):
 
 
 class ProcessesApi(flask.ext.restful.Resource):
+    """Query and manipulate processes API
+
+    GET /processes/<process_id>
+    PUT /processes/<process_id>
+    DELETE /processes/<process_id>
+
+    """
+
     def get(self, process_id=None):
         """Query a process
 
@@ -341,6 +399,12 @@ class ProcessesApi(flask.ext.restful.Resource):
 
 
 class ProcessesLogApi(flask.ext.restful.Resource):
+    """Process log API
+
+    GET /processes/<process_id/log
+
+    """
+
     def get(self, process_id):
         """Get formatted log messages for process_id
 
@@ -387,11 +451,43 @@ class ProcessesLogApi(flask.ext.restful.Resource):
         return response, 200
 
 
+class ContextApi(flask.ext.restful.Resource):
+    def get(self):
+        """Get data about context"""
+
+
+class PluginsListApi(flask.ext.restful.Resource):
+    def get(self):
+        """Get available plug-ins
+
+        :>jsonarr string name: Name of plugin
+        :>jsonarr array families: Supported families
+        :>jsonarr array hosts: Supported hosts
+        :>jsonarr string version: Plug-in version
+        :>jsonarr string requires: Plug-in requirement
+
+        :status 200: Plug-ins returned
+
+        """
+
+        plugins = current_service().plugins
+
+        response = []
+        for plugin in plugins:
+            response.append(format_plugin(plugin))
+
+        return response, 200
+
+
 class InstancesListApi(flask.ext.restful.Resource):
+    """
+
+    GET /instances
+
+    """
+
     def get(self):
         """Get all available instances
-
-        :status 200: Instances returned successfully
 
         :>jsonarr string name: Name of instance
         :>jsonarr string objName: Name of instance
@@ -399,6 +495,8 @@ class InstancesListApi(flask.ext.restful.Resource):
         :>jsonarr bool publish: Should instance be published?
         :>jsonarr array nodes: Array of included nodes
         :>jsonarr obj data: Instance metadata
+
+        :status 200: Instances returned successfully
 
         **Example response**
 
@@ -422,49 +520,65 @@ class InstancesListApi(flask.ext.restful.Resource):
 
         """
 
-        instances = current_service().instances()
-        assert isinstance(instances, list)
-        return instances, 200
+        instances = list(current_service().context)
+
+        response = []
+        for instance in instances:
+            response.append(format_instance(instance))
+
+        return response, 200
+
+
+def find_instance(name, col):
+    return filter(lambda i: i.data("name") == name, col)[0]
 
 
 class InstancesApi(flask.ext.restful.Resource):
     def get(self, instance_id):
         """Query links to instance resources
 
-        :status 200: Links returned
-
         :>json string nodes: Link to nodes of instance
         :>json string data: Link to data of instance
 
+        :status 200: Links returned
+
         """
 
-        instance = current_service().instance(instance_id)
-        instance["_links"] = [
+        instances = list(current_service().context)
+
+        try:
+            instance = find_instance(instance_id, instances)
+        except IndexError:
+            return {"message": "%s not found" % instance_id}, 404
+
+        response = format_instance(instance)
+        response["_links"] = [
             {"rel": "/nodes"},
             {"rel": "/data"}
         ]
 
-        return instance, 200
+        return response, 200
 
 
 class NodesListApi(flask.ext.restful.Resource):
     def get(self, instance_id):
         """Get nodes of instance `instance_id`
 
+        :>jsonarr name: Name of node
+
         :status 200: Nodes returned successfully
         :status 404: instance_id was not found
 
-        :>jsonarr name: Name of node
-
         """
 
-        instance = current_service().instance(instance_id)
-        if not instance:
+        instances = list(current_service().context)
+
+        try:
+            instance = find_instance(instance_id, instances)
+        except IndexError:
             return {"message": "instance_id %s not found" % instance_id}, 404
 
-        nodes = instance.get("nodes", {})
-
-        return nodes, 200
+        return list(instance), 200
 
 
 class DataListApi(flask.ext.restful.Resource):
@@ -487,13 +601,20 @@ class DataListApi(flask.ext.restful.Resource):
 
         """
 
-        instance = current_service().instance(instance_id)
-        if not instance:
+        instances = list(current_service().context)
+
+        try:
+            instance = find_instance(instance_id, instances)
+        except IndexError:
             return {"message": "instance_id %s not found" % instance_id}, 404
 
-        data = instance.get("data", {})
+        try:
+            json.dumps(instance.data())
+        except:
+            return {"message": "Instance data could not "
+                    "be JSON serialised"}, 500
 
-        return data, 200
+        return instance.data(), 200
 
 
 class DataApi(flask.ext.restful.Resource):

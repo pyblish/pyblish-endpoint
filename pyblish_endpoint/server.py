@@ -1,15 +1,4 @@
-"""Pyblish Endpoint Server
-
-| Endpoint                | Description
-|-------------------------|--------------
-| /processes              | List processes
-| /processes/<id>         | Query and manipulate process
-| /instances              | List instances
-| /instances/<id>         | Query instance
-| /instances/<id>/nodes   | List nodes
-| /instances/<id>/data    | Query and manipulate data
-
-"""
+"""Pyblish Endpoint Server"""
 
 # Standard library
 import os
@@ -31,13 +20,15 @@ import resource
 
 log = logging.getLogger("endpoint")
 
-prefix = "/pyblish/v0.1"
+prefix = "/pyblish/v1"
 resource_map = {
     "/processes": resource.ProcessesListApi,
     "/processes/<process_id>": resource.ProcessesApi,
     "/processes/<process_id>/log": resource.ProcessesLogApi,
     "/application": resource.ApplicationApi,
     "/application/shutdown": resource.ApplicationShutdownApi,
+    "/plugins": resource.PluginsListApi,
+    "/session": resource.SessionApi,
     "/instances": resource.InstancesListApi,
     "/instances/<instance_id>": resource.InstancesApi,
     "/instances/<instance_id>/nodes": resource.NodesListApi,

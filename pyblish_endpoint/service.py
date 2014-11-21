@@ -18,11 +18,12 @@ to users.
 
 import os
 import sys
-import abc
 import time
 import getpass
-import pyblish
 import logging
+
+import pyblish
+import pyblish.api
 
 from version import version
 
@@ -32,8 +33,32 @@ log = logging.getLogger("endpoint")
 class EndpointService(object):
     """Abstract baseclass for host interfaces towards endpoint"""
 
-    __metaclass__ = abc.ABCMeta
     _current = None
+
+    def __init__(self):
+        self.context = None
+        self.plugins = None
+
+    def init(self):
+        log.debug("Computing context")
+        context = pyblish.api.Context()
+        plugins = pyblish.api.discover()
+
+        log.debug("Performing selection..")
+        for plugin in plugins:
+            if not issubclass(plugin, pyblish.api.Selector):
+                continue
+
+            log.debug("Processing %s" % plugin)
+            for inst, err in plugin().process(context):
+                pass
+
+        self.context = context
+        self.plugins = plugins
+
+        print "instances: %s" % context
+
+        return True
 
     def system(self):
         """Confirm connection and return system state"""
@@ -56,23 +81,22 @@ class EndpointService(object):
             "pythonVersion": sys.version,
         }
 
-    @abc.abstractmethod
-    def instances(self):
-        """Return list of instances
+    def process(self, instance, plugin):
+        log.debug("Attempting to process %s with %s" % (instance, plugin))
 
-        Returns:
-            A list of dictionaries; one per instance
+        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
 
-        """
-
-        return []
-
-    def instance(self, name):
-        instances = self.instances()
         try:
-            return filter(lambda i: i["name"] == name, instances)[0]
+            plugin = matches[0]
         except IndexError:
-            return None
+            raise ValueError("Plug-in: %s was not found" % plugin)
+
+        for inst, err in plugin().process(self.context, instances=[instance]):
+            log.info("Processing %s with %s" % (plugin, self.context))
+            if err is not None:
+                return err
+
+        return True
 
 
 class MockService(EndpointService):
@@ -87,37 +111,32 @@ class MockService(EndpointService):
     SLEEP_DURATION = 0
     NUM_INSTANCES = 2
 
-    def instances(self):
-        instances = [
-            {
-                "name": "Peter01",
-                "objName": "Peter01:pointcache_SEL",
-                "family": "napoleon.asset.rig",
-                "publish": True,
-                "nodes": [
-                    {"name": "node1"},
-                    {"name": "node2"},
-                    {"name": "node3"}
-                ],
-                "data": {
-                    "identifier": "napoleon.instance",
-                    "minWidth": 800,
-                    "assetSource": "/server/assets/Peter",
-                    "destination": "/server/published/assets"
-                }
-            },
+    def init(self):
+        self.plugins = []
+        for plugin, superclass in (
+                ["ValidateNamingConvention", pyblish.api.Validator],
+                ["ExtractAsMa", pyblish.api.Extractor],
+                ["ConformAsset", pyblish.api.Conformer]):
+            obj = type(plugin, (superclass,), {})
+            self.plugins.append(obj)
 
-            {
-                "name": "Richard05",
-                "objName": "Richard05:pointcache_SEL",
-                "family": "napoleon.animation.rig",
-                "publish": True,
-                "nodes": [],
-                "data": {}
+        context = pyblish.api.Context()
+        for name in ("Peter01", "Richard05"):
+            instance = context.create_instance(name=name)
+            instance.set_data("family", "napoleon.asset.rig")
+            instance.set_data("publish", True)
+
+            instance._data = {
+                "identifier": "napoleon.instance",
+                "minWidth": 800,
+                "assetSource": "/server/assets/Peter",
+                "destination": "/server/published/assets"
             }
-        ]
 
-        return instances[:self.NUM_INSTANCES]
+            for node in ["node1", "node2", "node3"]:
+                instance.append(node)
+
+        self.context = context
 
     def process(self, instance, plugin):
         if self.SLEEP_DURATION:

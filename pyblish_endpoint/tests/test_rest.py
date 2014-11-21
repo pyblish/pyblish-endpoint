@@ -17,11 +17,16 @@ log = logging.getLogger("endpoint")
 service.register_service(service.MockService, force=True)
 
 
+def setup():
+    init()
+
+
 def mock_instances_teardown():
     service.MockService.NUM_INSTANCES = 2
 
 
 def mock_instances_setup():
+    init()
     service.MockService.NUM_INSTANCES = 0
 
 
@@ -70,8 +75,14 @@ def request(verb, address, *args, **kwargs):
     return func("/pyblish/v0.1" + address, *args, **kwargs)
 
 
-# Tests
+def init():
+    response = request("POST", "/session")
+    check_content_type(response)
+    check_status(response, 200)
 
+
+# Tests
+@with_setup(setup)
 def test_instances():
     """GET /instances returns available instances"""
     response = request("GET", "/instances")
@@ -86,7 +97,8 @@ def test_instances():
     eq_(len(data), 2)
 
     instance = data[0]
-    check_keys(instance, ["name", "family", "objName"])
+    check_keys(instance, ["name", "family",
+                          "nodes", "data", "publish"])
 
 
 @with_setup(mock_instances_setup, mock_instances_teardown)
@@ -100,6 +112,7 @@ def test_no_instances():
     eq_(isinstance(data, list), True)
 
 
+@with_setup(setup)
 def test_instance():
     """GET /instances/<instance> returns links to child resources"""
     response = request("GET", "/instances/Peter01")
@@ -113,8 +126,9 @@ def test_instance():
     check_keys(data, ["nodes", "data"])
 
 
+@with_setup(setup)
 def test_instance_nodes():
-    """GET /instances/<id>/nodes returns all nodes within instance"""
+    """GET /instances/<id>/nodes returns all nodes within instance_id"""
     response = request("GET", "/instances/Peter01/nodes")
     check_content_type(response)
     check_status(response, 200)
@@ -124,9 +138,10 @@ def test_instance_nodes():
 
     # Node only has a single key
     node = data[0]
-    check_keys(node, ["name"])
+    eq_(isinstance(node, basestring), True)
 
 
+@with_setup(setup)
 def test_instance_nodes_instance_not_exists():
     """Instance "Peter02" doesn't exist"""
     response = request("GET", "/instances/Peter02/nodes")
@@ -134,6 +149,7 @@ def test_instance_nodes_instance_not_exists():
     check_status(response, 404)
 
 
+@with_setup(setup)
 def test_instance_not_exists():
     """Instance "Peter02" doesn't exist"""
     response = request("GET", "/instances/Peter02/nodes")
@@ -141,6 +157,7 @@ def test_instance_not_exists():
     check_status(response, 404)
 
 
+@with_setup(setup)
 def test_instance_data():
     """GET /instances/<id>/data returns data within instance"""
     response = request("GET", "/instances/Peter01/data")
@@ -153,6 +170,19 @@ def test_instance_data():
                       "assetSource", "destination"])
 
 
+@with_setup(setup)
+def test_plugins():
+    """GET /plugins returns available plugins"""
+    response = request("GET", "/plugins")
+    check_content_type(response)
+    check_status(response, 200)
+
+    plugins = load_data(response)
+    eq_(isinstance(plugins, list), True)
+    eq_(len(plugins), 3)
+
+
+@with_setup(setup)
 def test_post_process():
     """POST to /processes returns a unique ID"""
     response = request("POST", "/processes",
@@ -167,6 +197,7 @@ def test_post_process():
     check_keys(data, ["process_id", "_next"])
 
 
+@with_setup(setup)
 def test_get_process():
     """GET /processes/<process_id> returns information about the process"""
 
@@ -194,6 +225,7 @@ def test_get_process():
     check_keys(data, ["process_id", "running"])
 
 
+@with_setup(setup)
 def test_application_stats():
     """GET /application returns application statistics"""
     response = request("GET", "/application")
@@ -206,6 +238,7 @@ def test_application_stats():
                       "pythonVersion", "user", "connectTime"])
 
 
+@with_setup(setup)
 def test_process_logging():
     """Each process maintains its own log"""
     response = request("POST", "/processes",
@@ -225,6 +258,7 @@ def test_process_logging():
 
 
 @timed(1.5)
+@with_setup(setup)
 def test_post_performance():
     """Posting should be fast"""
     for x in xrange(100):
@@ -235,6 +269,7 @@ def test_post_performance():
         check_status(response, 201)
 
 
+@with_setup(setup)
 def test_server_shutdown():
     """Can't shutdown from test, but the call works as expected"""
     response = request("POST", "/application/shutdown")
@@ -242,6 +277,7 @@ def test_server_shutdown():
     check_status(response, 400)
 
 
+@with_setup(setup)
 def test_list_processes():
     """Listing processes works fine"""
 
@@ -264,6 +300,7 @@ def test_list_processes():
     eq_(len(matches), 1)
 
 
+@with_setup(setup)
 def test_modify_process():
     """PUT /processes/<process_id> is not yet implemented"""
 
@@ -282,6 +319,7 @@ def test_modify_process():
     check_status(response, 501)
 
 
+@with_setup(setup)
 def test_delete_process():
     """DELETE /processes/<process_id> is not yet implemented"""
 
@@ -322,6 +360,7 @@ def test_delete_process():
     check_status(response, 404)
 
 
+@with_setup(setup)
 def test_logs():
     """GET /processes/<process_id>/log yields log messages"""
 
@@ -361,6 +400,7 @@ def test_logs():
     eq_(len(messages), prev_length - 1)
 
 
+@with_setup(setup)
 def test_log_formatter():
     """Logging with custom formatted works"""
 
