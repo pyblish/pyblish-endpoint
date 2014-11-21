@@ -35,7 +35,7 @@ prefix = "/pyblish/v0.1"
 resource_map = {
     "/processes": resource.ProcessesListApi,
     "/processes/<process_id>": resource.ProcessesApi,
-    "/processes/<process_id>/logs": resource.ProcessesLogsApi,
+    "/processes/<process_id>/log": resource.ProcessesLogApi,
     "/application": resource.ApplicationApi,
     "/application/shutdown": resource.ApplicationShutdownApi,
     "/instances": resource.InstancesListApi,
@@ -47,13 +47,14 @@ resource_map = {
 
 endpoint_map = {
     "/processes/<process_id>":          "process",
+    "/processes/<process_id>/log":      "process.log",
     "/processes":                       "processes",
     "/application":                     "application",
     "/application/shutdown":            "application.shutdown",
     "/instances/<instance_id>":         "instance",
     "/instances":                       "instances",
     "/instances/<instance_id>/nodes":   "instance.nodes",
-    "/instances/<instance_id>/data":    "instance.data"
+    "/instances/<instance_id>/data":    "instance.data",
 }
 
 
@@ -73,12 +74,32 @@ def create_app():
 
 
 def start_production_server(port, service, **kwargs):
+    """Start production server
+
+    Arguments:
+        port (int): Port at which to listen for requests
+        service (EndpointService): Service exposed at port.
+            Each host implements its own service.
+
+    """
+
     service_mod.register_service(service)
     app, api = create_app()
     app.run(port=port)
 
 
 def start_debug_server(port, **kwargs):
+    """Start debug server
+
+    This server uses a mocked up service to fake the actual
+    behaviour and data of a generic host; incuding faked time
+    it takes to perform a task.
+
+    Arguments:
+        port (int): Port at which to listen for requests
+
+    """
+
     # Log to console
     formatter = logging.Formatter("%(levelname)-8s %(message)s")
     handler = logging.StreamHandler()

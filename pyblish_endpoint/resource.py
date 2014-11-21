@@ -1,7 +1,7 @@
 """Endpoint resources
 
 Attributes:
-    queue: Logging messages, per process
+    process_logs: Logging messages, per process
     threads: Container of threads, stored under their unique ID
     log: Current logger
 
@@ -9,7 +9,6 @@ Attributes:
 
 # Standard library
 import uuid
-import Queue
 import logging
 import threading
 
@@ -20,23 +19,23 @@ import flask.ext.restful.reqparse
 # Local library
 from service import current_service
 
-queues = {}
+process_logs = {}
 threads = {}
 
 log = logging.getLogger("endpoint")
 
 
 class MessageHandler(logging.Handler):
-    """Intercept logging and store them in a queue per process
+    """Intercept logging and store them in a list per process
 
-    The queue is emptied upon calling GET /processes/<process_id>
+    The list is emptied upon calling DELETE /processes/<process_id>
 
     """
 
-    def __init__(self, thread, queue, *args, **kwargs):
+    def __init__(self, thread, records, *args, **kwargs):
         super(MessageHandler, self).__init__(*args, **kwargs)
         self.thread = thread
-        self.queue = queue
+        self.records = records
 
     def emit(self, record):
         # Do not record server messages
@@ -49,11 +48,11 @@ class MessageHandler(logging.Handler):
         # which causes threadName to always be "MainThread"
 
         # if record.threadName == self.thread:
-        #     self.queue.put(record)
+        #     self.records.append(record)
 
         # As a workaround, record everything.
         # NOTE: This is O(n) and thus much slower
-        self.queue.put_nowait(record)
+        self.records.append(record)
 
 
 def unique_id():
@@ -125,8 +124,6 @@ class ApplicationApi(flask.ext.restful.Resource):
     def get(self):
         """Return application statistics
 
-        :status 200: Application statistics returned
-
         :>json string host
         :>json string port
         :>json string pyblishVersion
@@ -134,6 +131,8 @@ class ApplicationApi(flask.ext.restful.Resource):
         :>json string pythonVersion
         :>json string user
         :>json string connectTime
+
+        :status 200: Application statistics returned
 
         """
 
@@ -220,19 +219,15 @@ class ProcessesListApi(flask.ext.restful.Resource):
         thread.start()
 
         # Setup logger
-        queue = Queue.Queue()
-        handler = MessageHandler(thread=thread.name, queue=queue)
-        # handler.setLevel(logging.DEBUG)
+        records = list()
+        handler = MessageHandler(thread=thread.name, records=records)
 
         # Logger is deleted during GET /processes/<process_id>
         log = logging.getLogger()
         log.addHandler(handler)
-        # log.setLevel(logging.DEBUG)
 
         # Store references
-        # Note: This is not stateless and violates REST and possibly
-        # web integration as a whole. How else can we do this?
-        queues[process_id] = [queue, handler]
+        process_logs[process_id] = [records, handler]
         threads[process_id] = thread
 
         return {"process_id": process_id,
@@ -290,61 +285,74 @@ class ProcessesApi(flask.ext.restful.Resource):
         except KeyError:
             return {"message": "%s did not exist" % process_id}, 404
 
+        try:
+            process_log, _ = process_logs[process_id]
+        except KeyError:
+            process_log = []
+
+        serialised_logs = []
+        for record in process_log:
+            serialised_logs.append(record.__dict__)
+
         return {"process_id": process_id,
-                "running": thread.is_alive()}, 200
+                "running": thread.is_alive(),
+                "messages": serialised_logs}, 200
 
     def put(self, process_id):
         """Modify a process
 
         :param process_id: Unique process identifier
 
-        :status 200: Process was successfully modified
-
         :>json bool ok: Operation status
+
+        :status 200: Process was successfully modified
 
         """
 
         return {"ok": False, "process_id": process_id}, 501  # Not implemented
 
     def delete(self, process_id):
-        """Kill a currently running process
+        """Remove process, including elements of process, from server
+
+        This is ONLY used for memory-optimisations,
+        server-side and has no impact the client.
 
         :param process_id: Unique process identifier
-
-        :status 200: Process was successfully killed
-        :status 404: Process was not found
-        :status 406: Process is not currently running
 
         :>json bool ok: Operation status, not returned upon error
         :>json string message: Error message
 
+        :status 200: Process was successfully cleaned up
+        :status 404: Process was not found
+
         """
 
-        return {"ok": False}, 501  # Not implemented
-
         try:
-            thread = threads.pop(process_id)
+            threads.pop(process_id)
         except KeyError:
             return {"message": "Process was not found"}, 404
 
-        if not thread.is_alive():
-            return {"message": "Process is not currently running"}, 406
+        try:
+            process_logs.pop(process_id)
+        except KeyError:
+            pass
 
         return {"ok": True}, 200
 
 
-class ProcessesLogsApi(flask.ext.restful.Resource):
+class ProcessesLogApi(flask.ext.restful.Resource):
     def get(self, process_id):
-        """Get log messages for instance
+        """Get formatted log messages for process_id
+
+        :query int index: From where to start returning messages
+        :query string index: Python format string, e.g.
+            '%(level)s %(message)s'
+
+        :>jsonarr string message: Logged message
+        :>jsonarr int lastIndex: Index of last message
 
         :status 200: Log messages returned
         :status 404: process_id was not found
-
-        :>jsonarr string message: Logged message
-        :>jsonarr string time: Time of event
-
-        :<json string format: Python format string, e.g.
-            '%(level)s %(message)s'
 
         """
 
@@ -352,31 +360,31 @@ class ProcessesLogsApi(flask.ext.restful.Resource):
         parser.add_argument("format", default="%(asctime)s "
                                               "%(levelname)s "
                                               "%(message)s")
+        parser.add_argument("index", type=int, default=0)
 
         kwargs = parser.parse_args()
 
         formatter = logging.Formatter(kwargs["format"])
+        index = kwargs["index"]
 
         messages = []
 
         try:
-            process_queue, process_handler = queues[process_id]
+            process_log, process_handler = process_logs[process_id]
         except KeyError:
-            return messages, 200
+            return messages, 404
 
-        while not process_queue.empty():
-            record = process_queue.get()
+        last_index = len(process_log)
+        for record in process_log[index:last_index]:
             message = formatter.format(record)
-            print "Getting %s from queue" % message
             messages.append(message)
 
-        # Clean-up queue in case thread is dead
-        thread = threads[process_id]
-        if not thread.is_alive():
-            queues.pop(process_id)
-            log.removeHandler(process_handler)
+        response = {
+            "lastIndex": last_index,
+            "messages": messages
+        }
 
-        return messages, 200
+        return response, 200
 
 
 class InstancesListApi(flask.ext.restful.Resource):

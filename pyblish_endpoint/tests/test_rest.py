@@ -25,6 +25,25 @@ def mock_instances_setup():
     service.MockService.NUM_INSTANCES = 0
 
 
+def wait_for_process(process_id):
+    # Look at the log, but make sure the process has
+    # completed running first.
+    is_running = True
+    count = 3
+    while is_running and count >= 0:
+        time.sleep(0.1)
+        count -= 1
+
+        response = request("GET", "/processes/%s" % process_id)
+        check_content_type(response)
+        check_status(response, 200)
+        data = load_data(response)
+        is_running = data["running"]
+
+    if is_running:
+        raise RuntimeError("Process took too long")
+
+
 # Helper functions
 
 def check_content_type(response):
@@ -275,13 +294,36 @@ def test_delete_process():
     data = load_data(response)
     process_id = data["process_id"]
 
+    wait_for_process(process_id)
+
+    # There should be logging messages now
+    response = request("GET", "/processes/%s/log" % process_id)
+    check_content_type(response)
+    check_status(response, 200)
+
+    data = load_data(response)
+    messages = data["messages"]
+    eq_(isinstance(messages, list), True)
+    eq_(len(messages) > 0, True)
+
+    # Now delete the process
     response = request("DELETE", "/processes/%s" % process_id)
     check_content_type(response)
-    check_status(response, 501)
+    check_status(response, 200)
+
+    # Process should not exist
+    response = request("GET", "/processes/%s" % process_id)
+    check_content_type(response)
+    check_status(response, 404)
+
+    # Logs should not exist for this process
+    response = request("GET", "/processes/%s/log" % process_id)
+    check_content_type(response)
+    check_status(response, 404)
 
 
 def test_logs():
-    """GET /processes/<process_id>/logs yields log messages"""
+    """GET /processes/<process_id>/log yields log messages"""
 
     # First make a process, then look at it's logging messages
     response = request("POST", "/processes",
@@ -292,36 +334,61 @@ def test_logs():
     data = load_data(response)
     process_id = data["process_id"]
 
-    # Look at the log, but make sure the process has
-    # completed running first.
-    is_running = True
-    count = 3
-    while is_running and count >= 0:
-        time.sleep(0.1)
-        count -= 1
+    wait_for_process(process_id)
 
-        response = request("GET", "/processes/%s" % process_id)
-        check_content_type(response)
-        check_status(response, 200)
-        data = load_data(response)
-        is_running = data["running"]
-
-    if is_running:
-        raise RuntimeError("Process took too long")
-
-    response = request("GET", "/processes/%s/logs" % process_id)
+    # Get ALL messages
+    response = request("GET", "/processes/%s/log" % process_id)
     check_content_type(response)
     check_status(response, 200)
 
-    messages = load_data(response)
+    data = load_data(response)
+    check_keys(data, ["messages", "lastIndex"])
+
+    messages = data["messages"]
     eq_(isinstance(messages, list), True)
-    eq_(len(messages) > 0, True)
+    eq_(len(messages) > 1, True)
     eq_(isinstance(messages[0], basestring), True)
 
-    # Log should be empty now
-    response = request("GET", "/processes/%s/logs" % process_id)
+    # Get messages, after index=1
+    prev_length = len(messages)
+    response = request("GET", "/processes/%s/log?index=1" % process_id)
     check_content_type(response)
     check_status(response, 200)
 
-    messages = load_data(response)
-    assert len(messages) == 0, messages
+    data = load_data(response)
+    messages = data["messages"]
+    eq_(isinstance(messages, list), True)
+    eq_(len(messages), prev_length - 1)
+
+
+def test_log_formatter():
+    """Logging with custom formatted works"""
+
+    # First make a process, then look at it's logging messages
+    response = request("POST", "/processes",
+                       data={"instance": "Peter01",
+                             "plugin": "ValidateNamespace"})
+    check_content_type(response)
+    check_status(response, 201)
+    data = load_data(response)
+    process_id = data["process_id"]
+
+    wait_for_process(process_id)
+
+    # Get ALL messages
+    response = request(
+        "GET", "/processes/%s/log?format=%s"
+        % (process_id, "%(levelname)s"))
+    check_content_type(response)
+    check_status(response, 200)
+
+    data = load_data(response)
+    check_keys(data, ["messages", "lastIndex"])
+
+    messages = data["messages"]
+    for message in messages:
+        assert message in ("DEBUG",
+                           "INFO",
+                           "WARNING",
+                           "ERROR",
+                           "CRITICAL")
