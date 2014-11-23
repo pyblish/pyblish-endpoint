@@ -105,11 +105,19 @@ class MockService(EndpointService):
     Attributes:
         SLEEP_DURATION: Fake processing delay, in milliseconds
         NUM_INSTANCES: Fake amount of available instances (max: 2)
+        PERFORMANCE: Enum of fake performance. Available values are
+            SLOW, MODERATE, FAST, NATIVE
 
     """
 
     SLEEP_DURATION = 0
     NUM_INSTANCES = 2
+
+    SLOW = 1 << 0
+    MODERATE = 1 << 1
+    FAST = 1 << 2
+    NATIVE = 1 << 3
+    PERFORMANCE = NATIVE
 
     def init(self):
         self.plugins = []
@@ -143,7 +151,20 @@ class MockService(EndpointService):
             log.info("Pretending it takes %s seconds "
                      "to complete.." % self.SLEEP_DURATION)
 
-        increment_sleep = self.SLEEP_DURATION / 3.0
+        performance = self.SLEEP_DURATION
+        if self.PERFORMANCE & self.SLOW:
+            performance += 2
+
+        if self.PERFORMANCE & self.MODERATE:
+            performance += 1
+
+        if self.PERFORMANCE & self.FAST:
+            performance += 0.1
+
+        if self.PERFORMANCE & self.NATIVE:
+            performance = 0
+
+        increment_sleep = performance / 3.0
 
         time.sleep(increment_sleep)
         log.info("Running first pass..")
