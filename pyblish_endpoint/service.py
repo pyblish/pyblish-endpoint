@@ -122,24 +122,38 @@ class MockService(EndpointService):
     def init(self):
         self.plugins = []
         for plugin, superclass in (
-                ["ValidateNamingConvention", pyblish.api.Validator],
                 ["ExtractAsMa", pyblish.api.Extractor],
-                ["ConformAsset", pyblish.api.Conformer]):
+                ["ConformAsset", pyblish.api.Conformer],
+                ["ValidateNamingConvention", pyblish.api.Validator]):
             obj = type(plugin, (superclass,), {})
+
+            obj.families = ["napoleon.animation.cache"]
+            if plugin == "ConformAsset":
+                obj.families = ["napoleon.asset.rig"]
+
+            obj.hosts = ["python", "maya"]
             self.plugins.append(obj)
+
+        self.plugins.append(ValidateFailureMock)
 
         context = pyblish.api.Context()
         for name in ("Peter01", "Richard05"):
             instance = context.create_instance(name=name)
-            instance.set_data("family", "napoleon.asset.rig")
-            instance.set_data("publish", True)
 
             instance._data = {
                 "identifier": "napoleon.instance",
                 "minWidth": 800,
                 "assetSource": "/server/assets/Peter",
-                "destination": "/server/published/assets"
+                "destination": "/server/published/assets",
             }
+
+            instance.set_data("publish", True)
+
+            if name == "Peter01":
+                instance.set_data("publish", False)
+                instance.set_data("family", "napoleon.asset.rig")
+            else:
+                instance.set_data("family", "napoleon.animation.cache")
 
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
@@ -176,6 +190,11 @@ class MockService(EndpointService):
         log.info("Completed successfully!")
 
         return True
+
+
+class ValidateFailureMock(pyblish.api.Validator):
+    def process_instance(self, instance):
+        raise ValueError("Instance failed")
 
 
 def current_service():

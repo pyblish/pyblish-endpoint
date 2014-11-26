@@ -74,6 +74,10 @@ def start_production_server(port, service, **kwargs):
 
     """
 
+    # Lessen web-server output
+    log = logging.getLogger("werkzeug")
+    log.setLevel(logging.WARNING)
+
     service_mod.register_service(service)
     app, api = create_app()
     app.run(port=port)

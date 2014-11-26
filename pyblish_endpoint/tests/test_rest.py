@@ -165,7 +165,6 @@ def test_instance_data():
     check_status(response, 200)
 
     data = load_data(response)
-    eq_(len(data), 4)  # 4 keys have been hardcoded
     check_keys(data, ["identifier", "minWidth",
                       "assetSource", "destination"])
 
@@ -179,7 +178,11 @@ def test_plugins():
 
     plugins = load_data(response)
     eq_(isinstance(plugins, list), True)
-    eq_(len(plugins), 3)
+    eq_(len(plugins) >= 3, True)
+
+    plugin = plugins[0]
+    check_keys(plugin, ["name", "version", "requires"])
+    eq_(isinstance(plugin["families"], list), True)
 
 
 @with_setup(setup)

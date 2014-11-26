@@ -74,11 +74,12 @@ def unique_id():
 
 def format_instance(instance):
     return {
-        "name": instance.name,
+        "name": instance.data("name"),
         "family": instance.data("family"),
         "objName": instance.name,
         "nodes": list(instance),
-        "data": instance.data(),
+        # "data": instance.data(),  # Temporarily disabled,
+        "data": {},
         "publish": instance.data("publish")
     }
 
@@ -87,8 +88,23 @@ def format_plugin(plugin):
     formatted = {
         "name": plugin.__name__,
         "version": plugin.version,
-        "requires": plugin.requires
+        "requires": plugin.requires,
+        "order": plugin.order,
     }
+
+    try:
+        # The MRO is as follows: (-1)object, (-2)Plugin, (-3)Selector..
+        formatted["type"] = plugin.__mro__[-3].__name__
+    except IndexError:
+        # Plug-in was not subclasses from any of the
+        # provided superclasses of pyblish.api. This
+        # is either a bug or some (very) custom behavior
+        # on the users part.
+        log.warning("In formatting this plug-in, it was discovered "
+                    "that it hasn't been subclassed from an expected "
+                    "superclass. Plugin and MRO: %s (%s)"
+                    % (plugin, plugin.__mro__))
+        formatted["type"] = "Invalid"
 
     for attr in ("hosts", "families"):
         if hasattr(plugin, attr):
@@ -277,8 +293,9 @@ class ProcessesListApi(flask.ext.restful.Resource):
         log.addHandler(handler)
 
         # Store references
-        process_logs[process_id] = [records, handler]
-        threads[process_id] = thread
+        threads[process_id] = {"log": [records, handler],
+                               "thread": thread,
+                               "errors": []}
 
         return {"process_id": process_id,
                 "_next": "/processes/<process_id>"}, 201
@@ -339,12 +356,12 @@ class ProcessesApi(flask.ext.restful.Resource):
         """
 
         try:
-            thread = threads[process_id]
+            thread = threads[process_id]["thread"]
         except KeyError:
             return {"message": "%s did not exist" % process_id}, 404
 
         try:
-            process_log, _ = process_logs[process_id]
+            process_log, _ = threads[process_id]["log"]
         except KeyError:
             process_log = []
 
@@ -390,11 +407,6 @@ class ProcessesApi(flask.ext.restful.Resource):
         except KeyError:
             return {"message": "Process was not found"}, 404
 
-        try:
-            process_logs.pop(process_id)
-        except KeyError:
-            pass
-
         return {"ok": True}, 200
 
 
@@ -434,7 +446,7 @@ class ProcessesLogApi(flask.ext.restful.Resource):
         messages = []
 
         try:
-            process_log, process_handler = process_logs[process_id]
+            process_log, process_handler = threads[process_id]["log"]
         except KeyError:
             return messages, 404
 
