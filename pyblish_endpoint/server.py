@@ -52,6 +52,7 @@ endpoint_map = {
 def create_app():
     log.debug("Creating app")
     app = flask.Flask(__name__)
+    app.config["TESTING"] = True
     api = flask.ext.restful.Api(app)
 
     # Map resources to URIs

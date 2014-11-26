@@ -56,8 +56,6 @@ class EndpointService(object):
         self.context = context
         self.plugins = plugins
 
-        print "instances: %s" % context
-
         return True
 
     def system(self):
@@ -123,8 +121,7 @@ class MockService(EndpointService):
         self.plugins = []
         for plugin, superclass in (
                 ["ExtractAsMa", pyblish.api.Extractor],
-                ["ConformAsset", pyblish.api.Conformer],
-                ["ValidateNamespace", pyblish.api.Validator]):
+                ["ConformAsset", pyblish.api.Conformer]):
             obj = type(plugin, (superclass,), {})
 
             obj.families = ["napoleon.animation.cache"]
@@ -135,6 +132,7 @@ class MockService(EndpointService):
             self.plugins.append(obj)
 
         self.plugins.append(ValidateFailureMock)
+        self.plugins.append(ValidateNamespace)
 
         context = pyblish.api.Context()
         for name in ("Peter01", "Richard05"):
@@ -204,9 +202,19 @@ class MockService(EndpointService):
         return True
 
 
+class ValidateNamespace(pyblish.api.Validator):
+    families = ["napoleon.animation.cache"]
+    hosts = ["*"]
+    version = (0, 0, 1)
+
+    def process_instance(self, instance):
+        log.info("Validating namespace..")
+        log.info("Completed validating namespace!")
+
+
 class ValidateFailureMock(pyblish.api.Validator):
-    families = ['*']
-    hosts = ['*']
+    families = ["*"]
+    hosts = ["*"]
     version = (0, 0, 1)
 
     def process_instance(self, instance):

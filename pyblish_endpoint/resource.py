@@ -16,6 +16,7 @@ import traceback
 import threading
 
 # Dependencies
+import pyblish.api
 import flask.ext.restful
 import flask.ext.restful.reqparse
 
@@ -101,6 +102,7 @@ def format_plugin(plugin):
         "version": plugin.version,
         "requires": plugin.requires,
         "order": plugin.order,
+        "active": False,
     }
 
     try:
@@ -382,8 +384,16 @@ class ProcessesApi(flask.ext.restful.Resource):
         except KeyError:
             process_log = []
 
+        # parser = flask.ext.restful.reqparse.RequestParser()
+        # parser.add_argument("index", type=int, default=0)
+
+        # kwargs = parser.parse_args()
+
+        index = 0
+        last_index = min([len(process_log) - 1, 0])
+
         serialised_logs = []
-        for record in process_log:
+        for record in process_log[index:]:
             serialised_logs.append(record.__dict__)
 
         formatted_errors = []
@@ -394,7 +404,8 @@ class ProcessesApi(flask.ext.restful.Resource):
         return {"process_id": process_id,
                 "running": thread["handle"].is_alive(),
                 "messages": serialised_logs,
-                "errors": formatted_errors}, 200
+                "errors": formatted_errors,
+                "lastIndex": last_index}, 200
 
     def put(self, process_id):
         """Modify a process
@@ -506,10 +517,21 @@ class PluginsListApi(flask.ext.restful.Resource):
         """
 
         plugins = current_service().plugins
+        context = current_service().context
+
+        families = set()
+        for instance in context:
+            families.add(instance.data("family"))
 
         response = []
         for plugin in plugins:
-            response.append(format_plugin(plugin))
+            formatted = format_plugin(plugin)
+
+            if hasattr(plugin, "families"):
+                if pyblish.api.instances_by_plugin(context, plugin):
+                    formatted["active"] = True
+
+            response.append(formatted)
 
         return response, 200
 
