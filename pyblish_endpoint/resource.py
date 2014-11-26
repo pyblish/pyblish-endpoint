@@ -72,6 +72,17 @@ def unique_id():
     return uuid.uuid4().hex[:5]
 
 
+def format_error(error):
+    fname, line_no, func, exc = error.traceback
+    return {
+        "message": str(error),
+        "fname": fname,
+        "line_number": line_no,
+        "func": func,
+        "exc": exc
+    }
+
+
 def format_instance(instance):
     return {
         "name": instance.data("name"),
@@ -267,14 +278,19 @@ class ProcessesListApi(flask.ext.restful.Resource):
 
         kwargs = parser.parse_args()
 
-        def task(instance, plugin):
+        process_id = unique_id()
+        kwargs["process_id"] = process_id
+
+        def task(process_id, instance, plugin):
             try:
-                current_service().process(instance, plugin)
+                result = current_service().process(instance, plugin)
+
+                if isinstance(result, Exception):
+                    threads[process_id]["errors"].append(result)
+
             except ValueError as e:
                 log.error("Processing failure for %s|%s: %s"
                           % (instance, plugin, e))
-
-        process_id = unique_id()
 
         # Spawn task in new thread
         thread = threading.Thread(
@@ -282,7 +298,6 @@ class ProcessesListApi(flask.ext.restful.Resource):
             target=task,
             kwargs=kwargs)
         thread.deamon = True
-        thread.start()
 
         # Setup logger
         records = list()
@@ -294,8 +309,10 @@ class ProcessesListApi(flask.ext.restful.Resource):
 
         # Store references
         threads[process_id] = {"log": [records, handler],
-                               "thread": thread,
+                               "handle": thread,
                                "errors": []}
+
+        thread.start()
 
         return {"process_id": process_id,
                 "_next": "/processes/<process_id>"}, 201
@@ -356,12 +373,12 @@ class ProcessesApi(flask.ext.restful.Resource):
         """
 
         try:
-            thread = threads[process_id]["thread"]
+            thread = threads[process_id]
         except KeyError:
             return {"message": "%s did not exist" % process_id}, 404
 
         try:
-            process_log, _ = threads[process_id]["log"]
+            process_log, _ = thread["log"]
         except KeyError:
             process_log = []
 
@@ -369,9 +386,15 @@ class ProcessesApi(flask.ext.restful.Resource):
         for record in process_log:
             serialised_logs.append(record.__dict__)
 
+        formatted_errors = []
+        for error in thread["errors"]:
+            formatted = format_error(error)
+            formatted_errors.append(formatted)
+
         return {"process_id": process_id,
-                "running": thread.is_alive(),
-                "messages": serialised_logs}, 200
+                "running": thread["handle"].is_alive(),
+                "messages": serialised_logs,
+                "errors": formatted_errors}, 200
 
     def put(self, process_id):
         """Modify a process

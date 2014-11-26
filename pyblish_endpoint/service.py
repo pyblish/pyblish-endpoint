@@ -124,7 +124,7 @@ class MockService(EndpointService):
         for plugin, superclass in (
                 ["ExtractAsMa", pyblish.api.Extractor],
                 ["ConformAsset", pyblish.api.Conformer],
-                ["ValidateNamingConvention", pyblish.api.Validator]):
+                ["ValidateNamespace", pyblish.api.Validator]):
             obj = type(plugin, (superclass,), {})
 
             obj.families = ["napoleon.animation.cache"]
@@ -161,6 +161,12 @@ class MockService(EndpointService):
         self.context = context
 
     def process(self, instance, plugin):
+        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
+        try:
+            plugin = matches[0]
+        except IndexError:
+            raise ValueError("Plug-in: %s was not found" % plugin)
+
         if self.SLEEP_DURATION:
             log.info("Pretending it takes %s seconds "
                      "to complete.." % self.SLEEP_DURATION)
@@ -189,10 +195,20 @@ class MockService(EndpointService):
         time.sleep(increment_sleep)
         log.info("Completed successfully!")
 
+        for inst, err in plugin().process(self.context, instances=[instance]):
+            log.info("Processing %s with %s" % (plugin, instance))
+            log.info("inst: %s, err: %s" % (inst, err))
+            if err is not None:
+                return err
+
         return True
 
 
 class ValidateFailureMock(pyblish.api.Validator):
+    families = ['*']
+    hosts = ['*']
+    version = (0, 0, 1)
+
     def process_instance(self, instance):
         raise ValueError("Instance failed")
 

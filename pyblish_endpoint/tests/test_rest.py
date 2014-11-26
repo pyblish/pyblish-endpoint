@@ -225,7 +225,7 @@ def test_get_process():
 
     # Expected keys at included in returned data (at least)
     data = json.loads(response.data)
-    check_keys(data, ["process_id", "running"])
+    check_keys(data, ["process_id", "running", "errors", "messages"])
 
 
 @with_setup(setup)

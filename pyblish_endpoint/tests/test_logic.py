@@ -71,26 +71,29 @@ def init():
     check_status(response, 200)
 
 
-# @with_setup(setup)
-# def test_validation_fail():
-#     """Failed validation returns indication of failure"""
-#     response = request("POST", "/processes",
-#                        data={"instance": "Peter01",
-#                              "plugin": "ValidateFailureMock"})
+@with_setup(setup)
+def test_validation_fail():
+    """Failed validation returns indication of failure"""
+    response = request("POST", "/processes",
+                       data={"instance": "Richard05",
+                             "plugin": "ValidateFailureMock"})
 
-#     check_content_type(response)
-#     check_status(response, 201)
+    check_content_type(response)
+    check_status(response, 201)
 
-#     data = load_data(response)
-#     process_id = data["process_id"]
+    data = load_data(response)
+    process_id = data["process_id"]
 
-#     # Block..
-#     wait_for_process(process_id)
+    # Block..
+    wait_for_process(process_id)
 
-#     response = request("GET", "/processes/%s" % process_id)
+    response = request("GET", "/processes/%s" % process_id)
 
-#     check_content_type(response)
-#     check_status(response, 200)
+    check_content_type(response)
+    check_status(response, 200)
 
-#     data = load_data(response)
-#     check_keys(data, [])
+    data = load_data(response)
+    errors = data["errors"]
+    eq_(len(errors), 1)
+    error = data["errors"][0]
+    eq_(error["message"], "Instance failed")
