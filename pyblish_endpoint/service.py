@@ -216,6 +216,7 @@ class ValidateFailureMock(pyblish.api.Validator):
     families = ["*"]
     hosts = ["*"]
     version = (0, 0, 1)
+    optional = True
 
     def process_instance(self, instance):
         raise ValueError("Instance failed")

@@ -103,6 +103,7 @@ def format_plugin(plugin):
         "requires": plugin.requires,
         "order": plugin.order,
         "active": False,
+        "optional": plugin.optional
     }
 
     try:
