@@ -37,7 +37,9 @@ class MessageHandler(logging.Handler):
     """
 
     def __init__(self, thread, records, *args, **kwargs):
-        super(MessageHandler, self).__init__(*args, **kwargs)
+        # Not using super(), for compatibility with Python 2.6
+        logging.Handler.__init__(self, *args, **kwargs)
+
         self.thread = thread
         self.records = records
 
