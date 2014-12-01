@@ -9,3 +9,12 @@ script:
 - pip install git+git://github.com/pyblish/pyblish-endpoint.git
 after_success:
 - coveralls
+deploy:
+  provider: pypi
+  user: mottosso
+  distributions: "sdist"
+  password:
+    secure: RdBkKqFak/K7Rw7O1loludCdZzWiBwuiIFTjiA02FpEOeuOqnpVOZNtEnbVQ2E0nmMQKkl6yZ4bm9Ae04PwE8A+LDpB7ilInbptnEQtGXcJ/X7vbLLL8Pi0C3S6nFeGrUPYqRc71fz1QWMfu8uSFQQVRvwfzLEvRCNL8pojUCcc=
+  on:
+    tags: true
+    all_branches: true
