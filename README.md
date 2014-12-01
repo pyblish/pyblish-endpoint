@@ -1,4 +1,8 @@
+
 ![Pyblish Endpoint][logo]
+
+[![Build Status](https://travis-ci.org/pyblish/pyblish-endpoint.svg?branch=master)](https://travis-ci.org/pyblish/pyblish-endpoint)
+[![PyPi](https://badge.fury.io/py/pyblish-endpoint.svg)](http://badge.fury.io/py/pyblish-endpoint)
 
 An integration endpoint for externally running frontends of [Pyblish][pyblish].
 

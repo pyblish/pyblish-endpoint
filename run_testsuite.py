@@ -1,9 +1,11 @@
 import os
 import sys
 
-# Expose Pyblish to PYTHONPATH
-path = os.path.dirname(__file__)
-sys.path.insert(0, path)
+# Expose vendor packages to PYTHONPATH
+repo_dir = os.path.dirname(__file__)
+package_dir = os.path.join(repo_dir, "pyblish_endpoint")
+vendor_dir = os.path.join(package_dir, "vendor")
+sys.path.insert(0, vendor_dir)
 
 import nose
 
