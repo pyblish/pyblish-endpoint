@@ -1,3 +1,4 @@
+# *-* coding:utf-8*-*
 """Endpoint Service
 
 In order to protect Endpoint from the internals or both Pyblish
