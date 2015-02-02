@@ -1,0 +1,9 @@
+pyblish Changelog
+=================
+
+This contains all major version changes between pyblish releases.
+
+Version 1.0.3
+--------------
+
+- Fixes bug when instances don't have a the key "publish" in its data. (#18)
