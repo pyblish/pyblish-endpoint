@@ -6,6 +6,9 @@
 
 An integration endpoint for externally running frontends of [Pyblish][pyblish].
 
+- [Instances API Documentation](http://pyblish-endpoint.readthedocs.org/en/latest/instances.html)
+- [Processes API Documentation](http://pyblish-endpoint.readthedocs.org/en/latest/processes.html)
+
 ### Architecture
 
 Pyblish Endpoint is a RESTful interface to Pyblish. It is built to facilitate inter-process communication of the various frontends supported by [Pyblish][pyblish].
