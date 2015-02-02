@@ -1,7 +1,10 @@
-pyblish Changelog
-=================
+Changelog
+=========
 
-This contains all major version changes between pyblish releases.
+Version 1.0.4
+-------------
+
+- Fixes travis/pypi issues.
 
 Version 1.0.3
 --------------

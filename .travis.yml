@@ -4,7 +4,7 @@ python:
 - 2.7
 install:
 - pip install coveralls
-- pip install pyblish
+- pip install pyblish-endpoint
 script:
 - python run_testsuite.py
 - pip install git+git://github.com/pyblish/pyblish-endpoint.git
@@ -15,7 +15,7 @@ deploy:
   user: mottosso
   distributions: "sdist"
   password:
-    secure: RdBkKqFak/K7Rw7O1loludCdZzWiBwuiIFTjiA02FpEOeuOqnpVOZNtEnbVQ2E0nmMQKkl6yZ4bm9Ae04PwE8A+LDpB7ilInbptnEQtGXcJ/X7vbLLL8Pi0C3S6nFeGrUPYqRc71fz1QWMfu8uSFQQVRvwfzLEvRCNL8pojUCcc=
+    secure: h6aErGu7RMVZKdqRd57vFIWEqzJhKxhoS7Fs1uzf8TQ1dWzfxkMxA7PNjSrXgQlSTS/t+SrFs8n929vd8H7eNSTR7+OEIFS+AGFhghbCNaPHelM8q/Zou/MG2O8s/6qVGVWEu5TRSpq+6UAH/q0lj0iLvcaQ+3wZeitx0dIZq4o=
   on:
     tags: true
     all_branches: true
