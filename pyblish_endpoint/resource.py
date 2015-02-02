@@ -91,7 +91,7 @@ def format_instance(instance):
         "name": instance.data("name"),
         "family": instance.data("family"),
         "objName": instance.name,
-        "nodes": list(instance),
+        "nodes": [str(x) for x in instance],
         # "data": instance.data(),  # Temporarily disabled,
         "data": {},
         "publish": instance.data("publish")
