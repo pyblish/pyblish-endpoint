@@ -79,7 +79,7 @@ def start_production_server(port, service, **kwargs):
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.WARNING)
 
-    service_mod.register_service(service)
+    service_mod.register_service(service, force=True)
     app, api = create_app()
     app.run(port=port)
 
