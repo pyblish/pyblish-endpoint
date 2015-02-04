@@ -5,7 +5,7 @@
 [![PyPi](https://badge.fury.io/py/pyblish-endpoint.svg)](http://badge.fury.io/py/pyblish-endpoint)
 
 An integration endpoint for externally running frontends of [Pyblish][pyblish].
-
+- [What does it do?](https://github.com/pyblish/pyblish-endpoint/wiki/What-does-it-do%3F)
 - [Instances API Documentation](http://pyblish-endpoint.readthedocs.org/en/latest/instances.html)
 - [Processes API Documentation](http://pyblish-endpoint.readthedocs.org/en/latest/processes.html)
 
