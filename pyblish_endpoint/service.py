@@ -136,7 +136,7 @@ class MockService(EndpointService):
         self.plugins.append(ValidateNamespace)
 
         context = pyblish.api.Context()
-        for name in ("Peter01", "Richard05"):
+        for name in ("Peter01", "Richard05", "Steven11"):
             instance = context.create_instance(name=name)
 
             instance._data = {
