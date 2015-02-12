@@ -1,8 +1,6 @@
 """Endpoint resources
 
 Attributes:
-    process_logs: Logging messages, per process
-    threads: Container of threads, stored under their unique ID
     log: Current logger
 
 """
@@ -13,7 +11,6 @@ import json
 import uuid
 import logging
 import traceback
-import threading
 
 # Dependencies
 import pyblish.api
@@ -23,42 +20,7 @@ import flask.ext.restful.reqparse
 # Local library
 from service import current_service
 
-process_logs = {}
-threads = {}
-
 log = logging.getLogger("endpoint")
-
-
-class MessageHandler(logging.Handler):
-    """Intercept logging and store them in a list per process
-
-    The list is emptied upon calling DELETE /processes/<process_id>
-
-    """
-
-    def __init__(self, thread, records, *args, **kwargs):
-        # Not using super(), for compatibility with Python 2.6
-        logging.Handler.__init__(self, *args, **kwargs)
-
-        self.thread = thread
-        self.records = records
-
-    def emit(self, record):
-        # Do not record server messages
-        if record.name in ["werkzeug"]:
-            return
-
-        # Only store records from current thread
-        # WARNING: This won't work in Maya, because
-        # Maya insists on running things in the main thread
-        # which causes threadName to always be "MainThread"
-
-        # if record.threadName == self.thread:
-        #     self.records.append(record)
-
-        # As a workaround, record everything.
-        # NOTE: This is O(n) and thus much slower
-        self.records.append(record)
 
 
 def unique_id():
@@ -116,10 +78,7 @@ def format_plugin(plugin):
         # provided superclasses of pyblish.api. This
         # is either a bug or some (very) custom behavior
         # on the users part.
-        log.warning("In formatting this plug-in, it was discovered "
-                    "that it hasn't been subclassed from an expected "
-                    "superclass. Plugin and MRO: %s (%s)"
-                    % (plugin, plugin.__mro__))
+        log.critical("This is a bug")
         formatted["type"] = "Invalid"
 
     for attr in ("hosts", "families"):
@@ -205,6 +164,12 @@ class ApplicationShutdownApi(flask.ext.restful.Resource):
 
 
 class SessionApi(flask.ext.restful.Resource):
+    """Create and populate Context in host
+
+    POST /session
+
+    """
+
     def post(self):
         try:
             status = current_service().init()
@@ -219,285 +184,59 @@ class SessionApi(flask.ext.restful.Resource):
         pass
 
 
-class ProcessesListApi(flask.ext.restful.Resource):
-    """List processes API
+class StateApi(flask.ext.restful.Resource):
+    """Pass GUI state to host for processing
 
-    GET /processes
-    POST /processes
+    GET /state
+    POST /state
 
     """
 
     def get(self):
-        """Get all currently running processes
-
-        :>jsonarr string process_id: Identifier of process
-
-        :status 200: Processes returned successfully
-
-        **Example response**
-
-        .. sourcecode:: http
-
-            HTTP/1.1 200 OK
-            Content-Type: application/json
-
-            [
-                {"process_id": 12345},
-                {"process_id": 12346},
-                {"process_id": 12347},
-            ]
-
-        """
-
-        process_ids = []
-        for process_id in threads.keys():
-            process_ids.append({"process_id": process_id})
-
-        return process_ids, 200
+        return {"ok": True, "state": current_service().state}
 
     def post(self):
-        """Process instance with plug-in
-
-        :param string instance: Instance to process
-        :param string plugin: Plug-in used for processing
-
-        :>json string process_id: Unique id of process
-        :>json string _next: Link to where id may be used to
-            query about process
-
-        :status 201: Process was successfully created
-        :status 400: Missing argument(s)
-
-        """
-
         parser = flask.ext.restful.reqparse.RequestParser()
 
-        parser.add_argument("instance",
+        parser.add_argument("state",
                             type=str,
                             required=True,
-                            help="Instance can't be blank")
-        parser.add_argument("plugin",
-                            type=str,
-                            required=True,
-                            help="Plugin can't be blank")
+                            help="Must pass state")
 
         kwargs = parser.parse_args()
 
-        process_id = unique_id()
-        kwargs["process_id"] = process_id
+        try:
+            state = json.loads(kwargs["state"])
+        except:
+            message = "Could not de-serialise state: %r" % kwargs
+            log.error(message)
+            return {"ok": False, "message": message}, 500
 
-        def task(process_id, instance, plugin):
-            try:
-                result = current_service().process(instance, plugin)
-
-                if isinstance(result, Exception):
-                    threads[process_id]["errors"].append(result)
-
-            except ValueError as e:
-                log.error("Processing failure for %s|%s: %s"
-                          % (instance, plugin, e))
-
-        # Spawn task in new thread
-        thread = threading.Thread(
-            name=process_id,
-            target=task,
-            kwargs=kwargs)
-        thread.deamon = True
-
-        # Setup logger
-        records = list()
-        handler = MessageHandler(thread=thread.name, records=records)
-
-        # Logger is deleted during GET /processes/<process_id>
-        log = logging.getLogger()
-        log.addHandler(handler)
-
-        # Store references
-        threads[process_id] = {"log": [records, handler],
-                               "handle": thread,
-                               "errors": []}
-
-        thread.start()
-
-        return {"process_id": process_id,
-                "_next": "/processes/<process_id>"}, 201
+        current_service().state = state
+        return {"ok": True, "state": state}, 200
 
 
-class ProcessesApi(flask.ext.restful.Resource):
-    """Query and manipulate processes API
+class NextApi(flask.ext.restful.Resource):
+    """Process next item in state
 
-    GET /processes/<process_id>
-    PUT /processes/<process_id>
-    DELETE /processes/<process_id>
+    POST /next
 
     """
 
-    def get(self, process_id=None):
-        """Query a process
+    def post(self):
+        result = current_service().next()
 
-        :param process_id: Unique process identifier
+        if result is not None:
+            plugin, instance, error, records = result
 
-        :>json string process_id: The identifier passed in
-        :>json bool running: Current state of this process
-        :>json array messages: List of queued messages
+            return {
+                "ok": True,
+                "plugin": plugin.__name__,
+                "instance": instance.name if instance is not None else None,
+                "log": [r.__dict__ for r in records]
+            }, 200
 
-        :status 200: Process existed and was returned
-        :status 404: process_id was not found
-
-        The following is the signature of the **messages** array.
-
-        :>jsonarr string name: Name of logger used to log the event
-        :>jsonarr string msg: Actual logged message
-        :>jsonarr string levelname: Level used for event
-        :>jsonarr string filename: Filename in which event was logged
-        :>jsonarr string pathname: Absolute path from which event was logged
-        :>jsonarr string lineno: Line within filename event was logged
-        :>jsonarr string funcName: Function used to log the event
-        :>jsonarr string module: Name of module used
-
-        **Example request**
-
-        .. sourcecode:: http
-
-            GET /api/v0.1/process/12345
-            Host: localhost
-            Accept: application/json
-
-        **Example response**
-
-        .. sourcecode:: http
-
-            HTTP/1.1 200 OK
-            Content-Type: application/json
-
-            {
-                "process_id": 12345,
-                "running": true
-            }
-
-        """
-
-        try:
-            thread = threads[process_id]
-        except KeyError:
-            return {"message": "%s did not exist" % process_id}, 404
-
-        try:
-            process_log, _ = thread["log"]
-        except KeyError:
-            process_log = []
-
-        # parser = flask.ext.restful.reqparse.RequestParser()
-        # parser.add_argument("index", type=int, default=0)
-
-        # kwargs = parser.parse_args()
-
-        index = 0
-        last_index = min([len(process_log) - 1, 0])
-
-        serialised_logs = []
-        for record in process_log[index:]:
-            serialised_logs.append(record.__dict__)
-
-        formatted_errors = []
-        for error in thread["errors"]:
-            formatted = format_error(error)
-            formatted_errors.append(formatted)
-
-        return {"process_id": process_id,
-                "running": thread["handle"].is_alive(),
-                "messages": serialised_logs,
-                "errors": formatted_errors,
-                "lastIndex": last_index}, 200
-
-    def put(self, process_id):
-        """Modify a process
-
-        :param process_id: Unique process identifier
-
-        :>json bool ok: Operation status
-
-        :status 200: Process was successfully modified
-
-        """
-
-        return {"ok": False, "process_id": process_id}, 501  # Not implemented
-
-    def delete(self, process_id):
-        """Remove process, including elements of process, from server
-
-        This is ONLY used for memory-optimisations,
-        server-side and has no impact the client.
-
-        :param process_id: Unique process identifier
-
-        :>json bool ok: Operation status, not returned upon error
-        :>json string message: Error message
-
-        :status 200: Process was successfully cleaned up
-        :status 404: Process was not found
-
-        """
-
-        try:
-            threads.pop(process_id)
-        except KeyError:
-            return {"message": "Process was not found"}, 404
-
-        return {"ok": True}, 200
-
-
-class ProcessesLogApi(flask.ext.restful.Resource):
-    """Process log API
-
-    GET /processes/<process_id/log
-
-    """
-
-    def get(self, process_id):
-        """Get formatted log messages for process_id
-
-        :query int index: From where to start returning messages
-        :query string index: Python format string, e.g.
-            '%(level)s %(message)s'
-
-        :>jsonarr string message: Logged message
-        :>jsonarr int lastIndex: Index of last message
-
-        :status 200: Log messages returned
-        :status 404: process_id was not found
-
-        """
-
-        parser = flask.ext.restful.reqparse.RequestParser()
-        parser.add_argument("format", default="%(asctime)s "
-                                              "%(levelname)s "
-                                              "%(message)s")
-        parser.add_argument("index", type=int, default=0)
-
-        kwargs = parser.parse_args()
-
-        formatter = logging.Formatter(kwargs["format"])
-        index = kwargs["index"]
-
-        messages = []
-
-        try:
-            process_log, process_handler = threads[process_id]["log"]
-        except KeyError:
-            return messages, 404
-
-        last_index = len(process_log)
-        for record in process_log[index:last_index]:
-            message = formatter.format(record)
-            messages.append(message)
-
-        response = {
-            "lastIndex": last_index,
-            "messages": messages
-        }
-
-        return response, 200
+        return {"ok": True}, 404
 
 
 class ContextApi(flask.ext.restful.Resource):
@@ -528,6 +267,7 @@ class PluginsListApi(flask.ext.restful.Resource):
 
         response = []
         for plugin in plugins:
+            print "Adding %s" % plugin
             formatted = format_plugin(plugin)
 
             if hasattr(plugin, "families"):
