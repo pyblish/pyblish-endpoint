@@ -226,7 +226,7 @@ def test_post_next():
     service.current_service().init()
 
     # Set state
-    original_state = {"instances": ["Steven11", "Richard05"],
+    original_state = {"context": ["Steven11", "Richard05"],
                       "plugins": ["ValidateNamespace"]}
 
     serialised_state = json.dumps(original_state)
@@ -240,7 +240,7 @@ def test_post_next():
     # Processing should now be done, and `data`
     # should contain the results
     data = load_data(response)
-    assert "log" in data, data
+    assert "records" in data, data
     assert data["plugin"] == "ValidateNamespace"
     assert data["instance"] == "Steven11", data
 
@@ -251,7 +251,7 @@ def test_post_next():
 
     # This time we should be processing the next instance
     data = load_data(response)
-    assert "log" in data, data
+    assert "records" in data, data
     assert data["plugin"] == "ValidateNamespace"
     assert data["instance"] == "Richard05", data
 
