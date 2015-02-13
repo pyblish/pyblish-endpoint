@@ -222,8 +222,8 @@ class MockService(EndpointService):
 
         self.context = context
 
-    def process(self, instance, plugin):
-        result = super(MockService, self).process(instance, plugin)
+    def next(self):
+        result = super(MockService, self).next()
         self.sleep()
         return result
 
