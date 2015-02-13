@@ -227,14 +227,25 @@ class NextApi(flask.ext.restful.Resource):
         result = current_service().next()
 
         if result is not None:
-            plugin, instance, error, records = result
+            plugin = result["plugin"]
+            instance = result["instance"]
+            error = result["error"]
+            records = result["records"]
 
-            return {
-                "ok": True,
+            output = {
                 "plugin": plugin.__name__,
-                "instance": instance.name if instance is not None else None,
-                "log": [r.__dict__ for r in records]
-            }, 200
+                "error": None,
+                "records": [r.__dict__ for r in records]
+            }
+
+            if instance is not None:
+                output["instance"] = instance.data("name")
+
+            if error is not None:
+                output["error"] = error.__dict__
+                output["error"]["message"] = error.message
+
+            return output, 200
 
         return {"ok": True}, 404
 

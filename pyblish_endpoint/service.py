@@ -39,8 +39,11 @@ class EndpointService(object):
     def __init__(self):
         self.context = None
         self.plugins = None
-        self.state = None
         self.processor = None
+        self.state = {
+            "context": [],
+            "plugins": []
+        }
 
     def init(self):
         """Create context and discover plug-ins and instances"""
@@ -98,23 +101,6 @@ class EndpointService(object):
             "pythonVersion": sys.version,
         }
 
-    def process(self, instance, plugin):
-        log.debug("Attempting to process %s with %s" % (instance, plugin))
-
-        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
-
-        try:
-            plugin = matches[0]
-        except IndexError:
-            raise ValueError("Plug-in: %s was not found" % plugin)
-
-        for inst, err in plugin().process(self.context, instances=[instance]):
-            log.info("Processing %s with %s" % (plugin, self.context))
-            if err is not None:
-                return err
-
-        return True
-
     def next(self):
         """Process next plug-in in state"""
 
@@ -125,9 +111,9 @@ class EndpointService(object):
             plugins = list()
 
             plugins_by_name = dict((p.__name__, p) for p in self.plugins)
-            instances_by_name = dict((i.name, i) for i in self.context)
+            instances_by_name = dict((i.data("name"), i) for i in self.context)
 
-            for plugin in self.state.get("plugins", []):
+            for plugin in self.state["plugins"]:
                 obj = plugins_by_name.get(plugin)
                 if obj is not None:
                     plugins.append(obj)
@@ -137,7 +123,7 @@ class EndpointService(object):
                               "(available plugins: %s"
                               % (plugin, self.plugins))
 
-            for instance in self.state.get("instances", []):
+            for instance in self.state["context"]:
                 obj = instances_by_name.get(instance)
                 if obj is not None:
                     context.add(obj)
@@ -150,7 +136,9 @@ class EndpointService(object):
             def process():
                 for plugin in plugins:
                     for instance, error in plugin().process(context):
-                        yield plugin, instance, error
+                        yield {"plugin": plugin,
+                               "instance": instance,
+                               "error": error}
 
             self.processor = process()
 
@@ -161,8 +149,9 @@ class EndpointService(object):
         root_logger.addHandler(handler)
 
         try:
-            plugin, instance, error = self.processor.next()
-            return plugin, instance, error, records
+            result = self.processor.next()
+            result["records"] = records
+            return result
         except StopIteration:
             self.processor = None
             return None
@@ -234,21 +223,9 @@ class MockService(EndpointService):
         self.context = context
 
     def process(self, instance, plugin):
-        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
-        try:
-            plugin = matches[0]
-        except IndexError:
-            raise ValueError("Plug-in: %s was not found" % plugin)
-
+        result = super(MockService, self).process(instance, plugin)
         self.sleep()
-
-        for inst, err in plugin().process(self.context, instances=[instance]):
-            log.info("Processing %s with %s" % (plugin, instance))
-            log.info("inst: %s, err: %s" % (inst, err))
-            if err is not None:
-                return err
-
-        return True
+        return result
 
     def sleep(self):
         if self.SLEEP_DURATION:
