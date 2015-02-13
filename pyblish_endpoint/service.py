@@ -75,8 +75,6 @@ class EndpointService(object):
         for plugin in plugins:
             assert plugin in sorted_plugins
 
-        print "Before: %s" % plugins
-        print "After: %s" % sorted_plugins
         return sorted_plugins
 
     def system(self):
