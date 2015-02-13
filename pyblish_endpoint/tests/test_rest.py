@@ -5,29 +5,25 @@ from nose.tools import *
 from pyblish_endpoint import server
 from pyblish_endpoint import service
 
+import lib
+
 app, api = server.create_app()
 app.config["TESTING"] = True
 client = app.test_client()
 client.testing = True
 
-log = logging.getLogger("endpoint")
+log = logging.getLogger()
 log.setLevel(logging.WARNING)
 
 
-service.register_service(service.MockService, force=True)
+service.register_service(lib.TestService, force=True)
 
 
 def setup():
-    init()
-
-
-def mock_instances_teardown():
-    service.current_service().NUM_INSTANCES = 2
-
-
-def mock_instances_setup():
-    init()
-    service.current_service().NUM_INSTANCES = 2
+    service.current_service().init()
+    response = request("POST", "/session")
+    check_content_type(response)
+    check_status(response, 200)
 
 
 # Helper functions
@@ -56,18 +52,10 @@ def request(verb, address, *args, **kwargs):
     return func("/pyblish/v1" + address, *args, **kwargs)
 
 
-def init():
-    response = request("POST", "/session")
-    check_content_type(response)
-    check_status(response, 200)
-
-
 # Tests
-@with_setup(setup, mock_instances_teardown)
+@with_setup(setup)
 def test_instances():
     """GET /instances returns available instances"""
-    service.current_service().NUM_INSTANCES = 2
-    service.current_service().init()
 
     response = request("GET", "/instances")
 
@@ -77,15 +65,14 @@ def test_instances():
 
     data = load_data(response)
 
-    # 2 instances are hardcoded by default
-    eq_(len(data), 2)
+    eq_(len(data), 3)
 
     instance = data[0]
     check_keys(instance, ["name", "family",
                           "nodes", "data", "publish"])
 
 
-@with_setup(mock_instances_setup, mock_instances_teardown)
+@with_setup(setup)
 def test_no_instances():
     """When there are no instances, it should still return an array"""
     response = request("GET", "/instances")
@@ -219,11 +206,9 @@ def test_post_state():
     assert data["state"].keys() == original_state.keys(), repr(data)
 
 
-@with_setup(setup, mock_instances_teardown)
+@with_setup(setup)
 def test_post_next():
     """POST to /next causes processing of next item in state"""
-    service.current_service().NUM_INSTANCES = 3
-    service.current_service().init()
 
     # Set state
     original_state = {"context": ["Steven11", "Richard05"],
