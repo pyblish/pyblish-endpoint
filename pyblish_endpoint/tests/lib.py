@@ -16,25 +16,20 @@ class TestService(service.EndpointService):
 
     def init(self):
         self.plugins = []
-        for plugin, superclass in (
-                ["ExtractAsMa", pyblish.api.Extractor],
-                ["ConformAsset", pyblish.api.Conformer]):
-            obj = type(plugin, (superclass,), {})
-
-            obj.families = ["napoleon.animation.cache"]
+        for plugin in PLUGINS:
+            plugin.families = ["napoleon.animation.cache"]
             if plugin == "ConformAsset":
-                obj.families = ["napoleon.asset.rig"]
+                plugin.families = ["napoleon.asset.rig"]
 
-            obj.hosts = ["python", "maya"]
-            self.plugins.append(obj)
+            plugin.hosts = ["python", "maya"]
+            self.plugins.append(plugin)
 
-        self.plugins.append(service.ValidateFailureMock)
-        self.plugins.append(service.ValidateNamespace)
+        self.plugins.append(ValidateFailureMock)
+        self.plugins.append(ValidateNamespace)
         self.plugins = self.sort_plugins(self.plugins)
 
-        fake_instances = ["Peter01", "Richard05", "Steven11"]
         context = pyblish.api.Context()
-        for name in fake_instances:
+        for name in INSTANCES:
             instance = context.create_instance(name=name)
 
             instance._data = {
@@ -56,3 +51,37 @@ class TestService(service.EndpointService):
                 instance.append(node)
 
         self.context = context
+
+
+#
+# Test plug-ins
+#
+
+ExtractAsMa = type("ExtractAsMa", (pyblish.api.Extractor,), {})
+ConformAsset = type("ConformAsset", (pyblish.api.Conformer,), {})
+
+
+@pyblish.api.log
+class ValidateNamespace(pyblish.api.Validator):
+    families = ["napoleon.animation.cache"]
+    hosts = ["*"]
+    version = (0, 0, 1)
+
+    def process_instance(self, instance):
+        self.log.info("Validating namespace..")
+        self.log.info("Completed validating namespace!")
+
+
+@pyblish.api.log
+class ValidateFailureMock(pyblish.api.Validator):
+    families = ["*"]
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+    def process_instance(self, instance):
+        raise ValueError("Instance failed")
+
+
+INSTANCES = ["Peter01", "Richard05", "Steven11", "Piraya12", "Marcus"]
+PLUGINS = [ExtractAsMa, ConformAsset, ValidateFailureMock, ValidateNamespace]

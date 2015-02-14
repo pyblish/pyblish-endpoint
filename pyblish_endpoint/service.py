@@ -105,7 +105,6 @@ class EndpointService(object):
         """Process next plug-in in state"""
 
         if self.processor is None:
-            # Build context from state
             context = pyblish.api.Context()
             context._data = self.context._data.copy()
             plugins = list()
@@ -114,9 +113,8 @@ class EndpointService(object):
             instances_by_name = dict((i.data("name"), i) for i in self.context)
 
             for plugin in self.state["plugins"]:
-                obj = plugins_by_name.get(plugin)
-                if obj is not None:
-                    plugins.append(obj)
+                if plugin in plugins_by_name:
+                    plugins.append(plugins_by_name[plugin])
                 else:
                     log.error("Plugin from client does "
                               "not exist on server: %s "
@@ -124,9 +122,8 @@ class EndpointService(object):
                               % (plugin, self.plugins))
 
             for instance in self.state["context"]:
-                obj = instances_by_name.get(instance)
-                if obj is not None:
-                    context.add(obj)
+                if instance in instances_by_name:
+                    context.add(instances_by_name[instance])
                 else:
                     log.error("Instance from client does "
                               "not exist on server: %s "
@@ -266,17 +263,18 @@ class MockService(EndpointService):
 # Mock classes
 #
 
-
+@pyblish.api.log
 class ValidateNamespace(pyblish.api.Validator):
     families = ["napoleon.animation.cache"]
     hosts = ["*"]
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        log.info("Validating namespace..")
-        log.info("Completed validating namespace!")
+        self.log.info("Validating namespace..")
+        self.log.info("Completed validating namespace!")
 
 
+@pyblish.api.log
 class ValidateFailureMock(pyblish.api.Validator):
     families = ["*"]
     hosts = ["*"]

@@ -16,11 +16,8 @@ log = logging.getLogger()
 log.setLevel(logging.WARNING)
 
 
-service.register_service(lib.TestService, force=True)
-
-
 def setup():
-    service.current_service().init()
+    service.register_service(lib.TestService, force=True)
     response = request("POST", "/session")
     check_content_type(response)
     check_status(response, 200)
@@ -65,7 +62,7 @@ def test_instances():
 
     data = load_data(response)
 
-    eq_(len(data), 3)
+    eq_(len(data), len(lib.INSTANCES))
 
     instance = data[0]
     check_keys(instance, ["name", "family",
@@ -105,7 +102,7 @@ def test_instance_nodes():
     check_status(response, 200)
 
     data = load_data(response)
-    eq_(len(data), 3)  # 3 nodes have been hardcoded
+    eq_(len(data), 3)  # Peter01 always has 3 child nodes
 
     # Node only has a single key
     node = data[0]
@@ -149,7 +146,7 @@ def test_plugins():
 
     plugins = load_data(response)
     eq_(isinstance(plugins, list), True)
-    eq_(len(plugins) >= 3, True)
+    eq_(len(plugins) >= len(lib.PLUGINS), True)
 
     plugin = plugins[0]
     check_keys(plugin, ["name", "version", "requires"])
@@ -216,6 +213,13 @@ def test_post_next():
 
     serialised_state = json.dumps(original_state)
     request("POST", "/state", data={"state": serialised_state})
+
+    response = request("GET", "/state")
+    check_content_type(response)
+    check_status(response, 200)
+    data = load_data(response)
+    assert_equal(original_state, data["state"])
+    assert_equal(data["state"]["context"][0], "Steven11")
 
     # Next
     response = request("POST", "/next")
