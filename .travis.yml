@@ -15,7 +15,8 @@ deploy:
   user: mottosso
   distributions: "sdist"
   password:
-    secure: Sf/5Naw/bzdJTsKTPgDh6+Q4Lc5kE8BEGgJq03o6nuL6nj0W5m1fxfdCToZ5xEn4FaYBCS64GZ/wWO9DrqMq3D9d8v5NpF1jShQmip1wQa8b0o35n5cf2buSCNmR4ZY8+eRrMNK6492i6zmliDN4zvJX3PtkPJqP1leC0C01VlE=
+    secure: VhOE26X+tKYrT7Y9O6YLBDHnviV7LX+kIj+QQvKvs6NKVZm8R+mb/Z10MzLNgrnfwjUn2yY251zDva9S3cCiw3NcXcq4So85N6vDm+kG21GdV4NYW5NNa+eoAMFZlX5jfojq2QwE7fAqnE3aJ97uj8T97jGG1PiOFAZYAh1LSFs=
   on:
     tags: true
     all_branches: true
+    python: 2.6

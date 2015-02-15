@@ -1,4 +1,3 @@
-import time
 import json
 import logging
 from nose.tools import *
@@ -6,47 +5,22 @@ from nose.tools import *
 from pyblish_endpoint import server
 from pyblish_endpoint import service
 
+import lib
+
 app, api = server.create_app()
 app.config["TESTING"] = True
 client = app.test_client()
 client.testing = True
 
-log = logging.getLogger("endpoint")
-
-
-service.register_service(service.MockService, force=True)
+log = logging.getLogger()
+log.setLevel(logging.WARNING)
 
 
 def setup():
-    init()
-
-
-def mock_instances_teardown():
-    service.MockService.NUM_INSTANCES = 2
-
-
-def mock_instances_setup():
-    init()
-    service.MockService.NUM_INSTANCES = 0
-
-
-def wait_for_process(process_id):
-    # Look at the log, but make sure the process has
-    # completed running first.
-    is_running = True
-    count = 3
-    while is_running and count >= 0:
-        time.sleep(0.1)
-        count -= 1
-
-        response = request("GET", "/processes/%s" % process_id)
-        check_content_type(response)
-        check_status(response, 200)
-        data = load_data(response)
-        is_running = data["running"]
-
-    if is_running:
-        raise RuntimeError("Process took too long")
+    service.register_service(lib.TestService, force=True)
+    response = request("POST", "/session")
+    check_content_type(response)
+    check_status(response, 200)
 
 
 # Helper functions
@@ -75,16 +49,11 @@ def request(verb, address, *args, **kwargs):
     return func("/pyblish/v1" + address, *args, **kwargs)
 
 
-def init():
-    response = request("POST", "/session")
-    check_content_type(response)
-    check_status(response, 200)
-
-
 # Tests
 @with_setup(setup)
 def test_instances():
     """GET /instances returns available instances"""
+
     response = request("GET", "/instances")
 
     # Check for application/json
@@ -93,15 +62,14 @@ def test_instances():
 
     data = load_data(response)
 
-    # 2 instances are hardcoded by default
-    eq_(len(data), 2)
+    eq_(len(data), len(lib.INSTANCES))
 
     instance = data[0]
     check_keys(instance, ["name", "family",
                           "nodes", "data", "publish"])
 
 
-@with_setup(mock_instances_setup, mock_instances_teardown)
+@with_setup(setup)
 def test_no_instances():
     """When there are no instances, it should still return an array"""
     response = request("GET", "/instances")
@@ -134,7 +102,7 @@ def test_instance_nodes():
     check_status(response, 200)
 
     data = load_data(response)
-    eq_(len(data), 3)  # 3 nodes have been hardcoded
+    eq_(len(data), 3)  # Peter01 always has 3 child nodes
 
     # Node only has a single key
     node = data[0]
@@ -178,54 +146,11 @@ def test_plugins():
 
     plugins = load_data(response)
     eq_(isinstance(plugins, list), True)
-    eq_(len(plugins) >= 3, True)
+    eq_(len(plugins) >= len(lib.PLUGINS), True)
 
     plugin = plugins[0]
     check_keys(plugin, ["name", "version", "requires"])
     eq_(isinstance(plugin["families"], list), True)
-
-
-@with_setup(setup)
-def test_post_process():
-    """POST to /processes returns a unique ID"""
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-
-    check_content_type(response)
-    check_status(response, 201)
-
-    data = load_data(response)
-
-    check_keys(data, ["process_id", "_next"])
-
-
-@with_setup(setup)
-def test_get_process():
-    """GET /processes/<process_id> returns information about the process"""
-
-    # Getting a non-existant ID returns status code 400
-    process_id = "notexist"
-    response = request("GET", "/processes/%s" % process_id)
-    check_content_type(response)
-    check_status(response, 404)
-
-    # Creating a new process works fine
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-
-    data = load_data(response)
-    process_id = data["process_id"]
-
-    response = request("GET", "/processes/%s" % process_id)
-    check_status(response, 200)
-
-    # Expected keys at included in returned data (at least)
-    data = json.loads(response.data)
-    check_keys(data, ["process_id", "running", "errors", "messages"])
 
 
 @with_setup(setup)
@@ -242,37 +167,6 @@ def test_application_stats():
 
 
 @with_setup(setup)
-def test_process_logging():
-    """Each process maintains its own log"""
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-    data = load_data(response)
-
-    # There should be messages in the queue by now
-    response = request("GET", "/processes/%s" % data["process_id"])
-    check_content_type(response)
-    check_status(response, 200)
-
-    data = load_data(response)
-    check_keys(data, ["process_id", "running"])
-
-
-@timed(1.5)
-@with_setup(setup)
-def test_post_performance():
-    """Posting should be fast"""
-    for x in xrange(100):
-        response = request("POST", "/processes",
-                           data={"instance": "Peter%02d" % x,
-                                 "plugin": "ValidateNamespace"})
-        check_content_type(response)
-        check_status(response, 201)
-
-
-@with_setup(setup)
 def test_server_shutdown():
     """Can't shutdown from test, but the call works as expected"""
     response = request("POST", "/application/shutdown")
@@ -281,157 +175,76 @@ def test_server_shutdown():
 
 
 @with_setup(setup)
-def test_list_processes():
-    """Listing processes works fine"""
+def test_post_state():
+    """State must be passed before calling next"""
+    original_state = {"instances": ["Richard11", "Peter01"],
+                      "plugins": ["ValidateNamespace"]}
 
-    # Make a process
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-    data = load_data(response)
-    process_id = data["process_id"]
-
-    # This process should now be gettable
-    response = request("GET", "/processes")
+    serialised_state = json.dumps(original_state)
+    response = request("POST", "/state",
+                       data={"state": serialised_state})
     check_content_type(response)
     check_status(response, 200)
-
     data = load_data(response)
-    matches = filter(lambda p: p["process_id"] == process_id, data)
-    eq_(len(matches), 1)
+    assert "ok" in data
+    assert "state" in data
+
+    assert isinstance(data["state"], dict)
+    assert data["state"].keys() == original_state.keys(), repr(data)
+
+    # GET returns the identical state
+
+    response = request("GET", "/state")
+    check_content_type(response)
+    check_status(response, 200)
+    data = load_data(response)
+    assert "ok" in data, data
+    assert "state" in data, data
+    assert data["state"].keys() == original_state.keys(), repr(data)
 
 
 @with_setup(setup)
-def test_modify_process():
-    """PUT /processes/<process_id> is not yet implemented"""
+def test_post_next():
+    """POST to /next causes processing of next item in state"""
 
-    # Make a process
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
+    # Set state
+    original_state = {"context": ["Steven11", "Richard05"],
+                      "plugins": ["ValidateNamespace"]}
+
+    serialised_state = json.dumps(original_state)
+    request("POST", "/state", data={"state": serialised_state})
+
+    response = request("GET", "/state")
     check_content_type(response)
-    check_status(response, 201)
+    check_status(response, 200)
     data = load_data(response)
-    process_id = data["process_id"]
+    assert_equal(original_state, data["state"])
+    assert_equal(data["state"]["context"][0], "Steven11")
 
-    response = request("PUT", "/processes/%s" % process_id,
-                       data={"running": False})
-    check_content_type(response)
-    check_status(response, 501)
-
-
-@with_setup(setup)
-def test_delete_process():
-    """DELETE /processes/<process_id> is not yet implemented"""
-
-    # Make a process
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-    data = load_data(response)
-    process_id = data["process_id"]
-
-    wait_for_process(process_id)
-
-    # There should be logging messages now
-    response = request("GET", "/processes/%s/log" % process_id)
+    # Next
+    response = request("POST", "/next")
     check_content_type(response)
     check_status(response, 200)
 
+    # Processing should now be done, and `data`
+    # should contain the results
     data = load_data(response)
-    messages = data["messages"]
-    eq_(isinstance(messages, list), True)
-    eq_(len(messages) > 0, True)
+    assert "records" in data, data
+    assert data["plugin"] == "ValidateNamespace"
+    assert data["instance"] == "Steven11", data
 
-    # Now delete the process
-    response = request("DELETE", "/processes/%s" % process_id)
+    # Next, again
+    response = request("POST", "/next")
     check_content_type(response)
     check_status(response, 200)
 
-    # Process should not exist
-    response = request("GET", "/processes/%s" % process_id)
+    # This time we should be processing the next instance
+    data = load_data(response)
+    assert "records" in data, data
+    assert data["plugin"] == "ValidateNamespace"
+    assert data["instance"] == "Richard05", data
+
+    # There is now no more instances to process
+    response = request("POST", "/next")
     check_content_type(response)
     check_status(response, 404)
-
-    # Logs should not exist for this process
-    response = request("GET", "/processes/%s/log" % process_id)
-    check_content_type(response)
-    check_status(response, 404)
-
-
-@with_setup(setup)
-def test_logs():
-    """GET /processes/<process_id>/log yields log messages"""
-
-    # First make a process, then look at it's logging messages
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-    data = load_data(response)
-    process_id = data["process_id"]
-
-    wait_for_process(process_id)
-
-    # Get ALL messages
-    response = request("GET", "/processes/%s/log" % process_id)
-    check_content_type(response)
-    check_status(response, 200)
-
-    data = load_data(response)
-    check_keys(data, ["messages", "lastIndex"])
-
-    messages = data["messages"]
-    eq_(isinstance(messages, list), True)
-    eq_(len(messages) > 1, True)
-    eq_(isinstance(messages[0], basestring), True)
-
-    # Get messages, after index=1
-    prev_length = len(messages)
-    response = request("GET", "/processes/%s/log?index=1" % process_id)
-    check_content_type(response)
-    check_status(response, 200)
-
-    data = load_data(response)
-    messages = data["messages"]
-    eq_(isinstance(messages, list), True)
-    eq_(len(messages), prev_length - 1)
-
-
-@with_setup(setup)
-def test_log_formatter():
-    """Logging with custom formatted works"""
-
-    # First make a process, then look at it's logging messages
-    response = request("POST", "/processes",
-                       data={"instance": "Peter01",
-                             "plugin": "ValidateNamespace"})
-    check_content_type(response)
-    check_status(response, 201)
-    data = load_data(response)
-    process_id = data["process_id"]
-
-    wait_for_process(process_id)
-
-    # Get ALL messages
-    response = request(
-        "GET", "/processes/%s/log?format=%s"
-        % (process_id, "%(levelname)s"))
-    check_content_type(response)
-    check_status(response, 200)
-
-    data = load_data(response)
-    check_keys(data, ["messages", "lastIndex"])
-
-    messages = data["messages"]
-    for message in messages:
-        assert message in ("DEBUG",
-                           "INFO",
-                           "WARNING",
-                           "ERROR",
-                           "CRITICAL")

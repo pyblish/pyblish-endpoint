@@ -1,12 +1,12 @@
 Changelog
 =========
 
-Version 1.0.5
+Version 1.1.0
 -------------
 
-- Fixes travis/pypi issues.
+- See CHANGES for Pyblish QML 0.2.0 for full details
 
-Version 1.0.4
+Version 1.0.4-1.0.6
 -------------
 
 - Fixes travis/pypi issues.

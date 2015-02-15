@@ -2,13 +2,7 @@
 
 # Standard library
 import os
-import sys
 import logging
-
-# Register vendor packages
-package_dir = os.path.dirname(__file__)
-vendor_dir = os.path.join(package_dir, "vendor")
-sys.path.insert(0, vendor_dir)
 
 # Dependencies
 import flask
@@ -22,9 +16,6 @@ log = logging.getLogger("endpoint")
 
 prefix = "/pyblish/v1"
 resource_map = {
-    "/processes": resource.ProcessesListApi,
-    "/processes/<process_id>": resource.ProcessesApi,
-    "/processes/<process_id>/log": resource.ProcessesLogApi,
     "/application": resource.ApplicationApi,
     "/application/shutdown": resource.ApplicationShutdownApi,
     "/plugins": resource.PluginsListApi,
@@ -34,18 +25,19 @@ resource_map = {
     "/instances/<instance_id>/nodes": resource.NodesListApi,
     "/instances/<instance_id>/data": resource.DataListApi,
     "/instances/<instance_id>/data/<data_id>": resource.DataApi,
+    "/state": resource.StateApi,
+    "/next": resource.NextApi,
 }
 
 endpoint_map = {
-    "/processes/<process_id>":          "process",
-    "/processes/<process_id>/log":      "process.log",
-    "/processes":                       "processes",
     "/application":                     "application",
     "/application/shutdown":            "application.shutdown",
     "/instances/<instance_id>":         "instance",
     "/instances":                       "instances",
     "/instances/<instance_id>/nodes":   "instance.nodes",
     "/instances/<instance_id>/data":    "instance.data",
+    "/state":                           "state",
+    "/next":                            "next",
 }
 
 
@@ -55,7 +47,6 @@ def create_app():
     app.config["TESTING"] = True
     api = flask.ext.restful.Api(app)
 
-    # Map resources to URIs
     log.debug("Mapping URIs")
     for uri, _resource in resource_map.items():
         endpoint = endpoint_map.get(uri)
@@ -79,7 +70,7 @@ def start_production_server(port, service, **kwargs):
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.WARNING)
 
-    service_mod.register_service(service)
+    service_mod.register_service(service, force=True)
     app, api = create_app()
     app.run(port=port)
 
@@ -106,7 +97,8 @@ def start_debug_server(port, **kwargs):
 
     os.environ["ENDPOINT_PORT"] = str(port)
 
-    service_mod.MockService.SLEEP_DURATION = 3
+    service_mod.MockService.SLEEP_DURATION = 1
+    service_mod.MockService.PERFORMANCE = service_mod.MockService.FAST
     service_mod.register_service(service_mod.MockService)
 
     app, api = create_app()

@@ -39,9 +39,15 @@ class EndpointService(object):
     def __init__(self):
         self.context = None
         self.plugins = None
+        self.processor = None
+        self.state = {
+            "context": [],
+            "plugins": []
+        }
 
     def init(self):
-        log.debug("Computing context")
+        """Create context and discover plug-ins and instances"""
+
         context = pyblish.api.Context()
         plugins = pyblish.api.discover()
 
@@ -55,9 +61,24 @@ class EndpointService(object):
                 pass
 
         self.context = context
-        self.plugins = plugins
+        self.plugins = self.sort_plugins(plugins)
 
         return True
+
+    def sort_plugins(self, plugins):
+        sorted_plugins = list()
+        for type in (pyblish.api.Selector,
+                     pyblish.api.Validator,
+                     pyblish.api.Extractor,
+                     pyblish.api.Conformer):
+            for plugin in plugins:
+                if issubclass(plugin, type):
+                    sorted_plugins.append(plugin)
+
+        for plugin in plugins:
+            assert plugin in sorted_plugins
+
+        return sorted_plugins
 
     def system(self):
         """Confirm connection and return system state"""
@@ -80,22 +101,59 @@ class EndpointService(object):
             "pythonVersion": sys.version,
         }
 
-    def process(self, instance, plugin):
-        log.debug("Attempting to process %s with %s" % (instance, plugin))
+    def next(self):
+        """Process next plug-in in state"""
 
-        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
+        if self.processor is None:
+            context = pyblish.api.Context()
+            context._data = self.context._data.copy()
+            plugins = list()
+
+            plugins_by_name = dict((p.__name__, p) for p in self.plugins)
+            instances_by_name = dict((i.data("name"), i) for i in self.context)
+
+            for plugin in self.state["plugins"]:
+                try:
+                    plugins.append(plugins_by_name[plugin])
+                except KeyError:
+                    log.error("Plugin from client does "
+                              "not exist on server: %s "
+                              "(available plugins: %s"
+                              % (plugin, self.plugins))
+
+            for instance in self.state["context"]:
+                try:
+                    context.add(instances_by_name[instance])
+                except KeyError:
+                    log.error("Instance from client does "
+                              "not exist on server: %s "
+                              "(available instances: %s)"
+                              % (instance, self.context))
+
+            def process():
+                for plugin in plugins:
+                    for instance, error in plugin().process(context):
+                        yield {"plugin": plugin,
+                               "instance": instance,
+                               "error": error}
+
+            self.processor = process()
+
+        records = list()
+        handler = MessageHandler(records)
+
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
 
         try:
-            plugin = matches[0]
-        except IndexError:
-            raise ValueError("Plug-in: %s was not found" % plugin)
-
-        for inst, err in plugin().process(self.context, instances=[instance]):
-            log.info("Processing %s with %s" % (plugin, self.context))
-            if err is not None:
-                return err
-
-        return True
+            result = self.processor.next()
+            result["records"] = records
+            return result
+        except StopIteration:
+            self.processor = None
+            return None
+        finally:
+            root_logger.removeHandler(handler)
 
 
 class MockService(EndpointService):
@@ -110,7 +168,7 @@ class MockService(EndpointService):
     """
 
     SLEEP_DURATION = 0
-    NUM_INSTANCES = 2
+    NUM_INSTANCES = 3
 
     SLOW = 1 << 0
     MODERATE = 1 << 1
@@ -134,9 +192,11 @@ class MockService(EndpointService):
 
         self.plugins.append(ValidateFailureMock)
         self.plugins.append(ValidateNamespace)
+        self.plugins = self.sort_plugins(self.plugins)
 
+        fake_instances = ["Peter01", "Richard05", "Steven11"]
         context = pyblish.api.Context()
-        for name in ("Peter01", "Richard05"):
+        for name in fake_instances[:self.NUM_INSTANCES]:
             instance = context.create_instance(name=name)
 
             instance._data = {
@@ -159,60 +219,62 @@ class MockService(EndpointService):
 
         self.context = context
 
-    def process(self, instance, plugin):
-        matches = filter(lambda p: p.__name__ == plugin, self.plugins)
-        try:
-            plugin = matches[0]
-        except IndexError:
-            raise ValueError("Plug-in: %s was not found" % plugin)
+    def next(self):
+        result = super(MockService, self).next()
+        self.sleep()
+        return result
 
+    def sleep(self):
         if self.SLEEP_DURATION:
             log.info("Pretending it takes %s seconds "
                      "to complete.." % self.SLEEP_DURATION)
 
-        performance = self.SLEEP_DURATION
-        if self.PERFORMANCE & self.SLOW:
-            performance += 2
+            performance = self.SLEEP_DURATION
+            if self.PERFORMANCE & self.SLOW:
+                performance += 2
 
-        if self.PERFORMANCE & self.MODERATE:
-            performance += 1
+            if self.PERFORMANCE & self.MODERATE:
+                performance += 1
 
-        if self.PERFORMANCE & self.FAST:
-            performance += 0.1
+            if self.PERFORMANCE & self.FAST:
+                performance += 0.1
 
-        if self.PERFORMANCE & self.NATIVE:
-            performance = 0
+            if self.PERFORMANCE & self.NATIVE:
+                performance = 0
 
-        increment_sleep = performance / 3.0
+            increment_sleep = performance / 3.0
 
-        time.sleep(increment_sleep)
-        log.info("Running first pass..")
+            time.sleep(increment_sleep)
+            log.info("Running first pass..")
 
-        time.sleep(increment_sleep)
-        log.info("Almost done..")
+            time.sleep(increment_sleep)
+            log.info("Almost done..")
 
-        time.sleep(increment_sleep)
-        log.info("Completed successfully!")
+            time.sleep(increment_sleep)
+            log.info("Completed successfully!")
 
-        for inst, err in plugin().process(self.context, instances=[instance]):
-            log.info("Processing %s with %s" % (plugin, instance))
-            log.info("inst: %s, err: %s" % (inst, err))
-            if err is not None:
-                return err
-
-        return True
+    def process_state(self, state):
+        for event in super(MockService, self).process_state(state):
+            self.sleep()
+            yield event
 
 
+#
+# Mock classes
+#
+
+@pyblish.api.log
 class ValidateNamespace(pyblish.api.Validator):
     families = ["napoleon.animation.cache"]
     hosts = ["*"]
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        log.info("Validating namespace..")
-        log.info("Completed validating namespace!")
+        self.log.info("Validating namespace..")
+        self.log.info("Completed validating namespace!")
 
 
+@pyblish.api.log
 class ValidateFailureMock(pyblish.api.Validator):
     families = ["*"]
     hosts = ["*"]
@@ -221,6 +283,25 @@ class ValidateFailureMock(pyblish.api.Validator):
 
     def process_instance(self, instance):
         raise ValueError("Instance failed")
+
+#
+# End mock classes
+#
+
+
+class MessageHandler(logging.Handler):
+    def __init__(self, records, *args, **kwargs):
+        # Not using super(), for compatibility with Python 2.6
+        logging.Handler.__init__(self, *args, **kwargs)
+
+        self.records = records
+
+    def emit(self, record):
+        # Do not record server messages
+        if record.name in ["werkzeug"]:
+            return
+
+        self.records.append(record)
 
 
 def current_service():
