@@ -113,18 +113,18 @@ class EndpointService(object):
             instances_by_name = dict((i.data("name"), i) for i in self.context)
 
             for plugin in self.state["plugins"]:
-                if plugin in plugins_by_name:
+                try:
                     plugins.append(plugins_by_name[plugin])
-                else:
+                except KeyError:
                     log.error("Plugin from client does "
                               "not exist on server: %s "
                               "(available plugins: %s"
                               % (plugin, self.plugins))
 
             for instance in self.state["context"]:
-                if instance in instances_by_name:
+                try:
                     context.add(instances_by_name[instance])
-                else:
+                except KeyError:
                     log.error("Instance from client does "
                               "not exist on server: %s "
                               "(available instances: %s)"
