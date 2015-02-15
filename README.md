@@ -5,6 +5,8 @@
 
 An integration endpoint for externally running frontends of [Pyblish][pyblish].
 
+- [What does it do?](https://github.com/pyblish/pyblish-endpoint/wiki/What-does-it-do%3F)
+
 <br>
 <br>
 <br>
