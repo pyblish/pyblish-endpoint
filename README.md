@@ -64,9 +64,9 @@ As frontends develop wider requirements, this interface will expand with both ma
 For an example of an implemented frontend, head over to [Pyblish QML][qml], a frontend built with QML 5.3 of Qt. For an example of an implemented *service*, have a look at the one provided via [Pyblish for Maya][maya].
 
 [qml]: https://github.com/pyblish/pyblish-qml
-[maya]: https://github.com/abstractfactory/pyblish-maya/blob/master/pyblish_maya/service.py
+[maya]: https://github.com/pyblish/pyblish-maya/blob/master/pyblish_maya/service.py
 [interface]: https://github.com/pyblish/pyblish-endpoint/blob/master/pyblish_endpoint/service.py#L22
-[pyblish]: https://github.com/abstractfactory/pyblish
+[pyblish]: https://github.com/pyblish/pyblish
 [schematic]: https://cloud.githubusercontent.com/assets/2152766/4996672/b61e3d06-69c0-11e4-88fb-236b2ccb26c6.png
 [service]: https://cloud.githubusercontent.com/assets/2152766/4996259/519c11f2-69be-11e4-872d-a146ea132faf.png
 [logo]: https://cloud.githubusercontent.com/assets/2152766/4995061/128ed178-69b6-11e4-99bf-586353d2b9be.png
