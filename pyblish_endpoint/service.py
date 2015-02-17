@@ -62,6 +62,7 @@ class EndpointService(object):
 
         self.context = context
         self.plugins = self.sort_plugins(plugins)
+        self.processor = None
 
         return True
 
@@ -190,10 +191,6 @@ class MockService(EndpointService):
             obj.hosts = ["python", "maya"]
             self.plugins.append(obj)
 
-        self.plugins.append(ValidateFailureMock)
-        self.plugins.append(ValidateNamespace)
-        self.plugins = self.sort_plugins(self.plugins)
-
         fake_instances = ["Peter01", "Richard05", "Steven11"]
         context = pyblish.api.Context()
         for name in fake_instances[:self.NUM_INSTANCES]:
@@ -217,7 +214,12 @@ class MockService(EndpointService):
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
+        self.plugins.append(ValidateFailureMock)
+        self.plugins.append(ValidateNamespace)
+        self.plugins = self.sort_plugins(self.plugins)
+
         self.context = context
+        self.processor = None
 
     def next(self):
         result = super(MockService, self).next()
@@ -252,11 +254,6 @@ class MockService(EndpointService):
 
             time.sleep(increment_sleep)
             log.info("Completed successfully!")
-
-    def process_state(self, state):
-        for event in super(MockService, self).process_state(state):
-            self.sleep()
-            yield event
 
 
 #
