@@ -97,7 +97,7 @@ def start_debug_server(port, **kwargs):
 
     os.environ["ENDPOINT_PORT"] = str(port)
 
-    service_mod.MockService.SLEEP_DURATION = 1
+    service_mod.MockService.SLEEP_DURATION = .5
     service_mod.MockService.PERFORMANCE = service_mod.MockService.FAST
     service_mod.register_service(service_mod.MockService)
 

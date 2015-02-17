@@ -278,7 +278,6 @@ class PluginsListApi(flask.ext.restful.Resource):
 
         response = []
         for plugin in plugins:
-            print "Adding %s" % plugin
             formatted = format_plugin(plugin)
 
             if hasattr(plugin, "families"):
