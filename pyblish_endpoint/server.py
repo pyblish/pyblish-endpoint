@@ -101,6 +101,15 @@ def start_debug_server(port, **kwargs):
     service_mod.MockService.PERFORMANCE = service_mod.MockService.FAST
     service_mod.register_service(service_mod.MockService)
 
+    # Expose vendor libraries to external Python process
+    # triggered by running Flask in debug-mode.
+    package_dir = os.path.dirname(__file__)
+    vendor_dir = os.path.join(package_dir, "vendor")
+    if not os.environ["PYTHONPATH"]:
+        os.environ["PYTHONPATH"] = ""
+
+    os.environ["PYTHONPATH"] += os.pathsep + vendor_dir
+
     app, api = create_app()
     app.run(debug=True, port=port)
 

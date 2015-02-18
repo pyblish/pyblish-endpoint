@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 1.1.2
+-------------
+
+- Made package callable
+- Added support for running debug server without Flask
+
 Version 1.1.1
 -------------
 
