@@ -53,10 +53,11 @@ def format_instance(instance):
         "name": instance.data("name"),
         "family": instance.data("family"),
         "objName": instance.name,
+        "category": getattr(instance, "category", None),
         "nodes": [str(x) for x in instance],
-        # "data": instance.data(),  # Temporarily disabled,
-        "data": {},
-        "publish": instance.data("publish")
+        "data": dict((str(k), str(v)) for k, v in instance._data.iteritems()),
+        "publish": instance.data("publish"),
+        "doc": instance.data("doc")
     }
 
 
@@ -67,7 +68,8 @@ def format_plugin(plugin):
         "requires": plugin.requires,
         "order": plugin.order,
         "active": False,
-        "optional": plugin.optional
+        "optional": plugin.optional,
+        "doc": getattr(plugin, "doc", plugin.__doc__)
     }
 
     try:
