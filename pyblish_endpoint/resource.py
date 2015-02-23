@@ -63,7 +63,7 @@ def format_instance(instance):
     children = list()
     for child in instance:
         try:
-            child = str(child)
+            json.dumps(child)
         except:
             child = "Invalid"
         children.append(child)
@@ -71,10 +71,10 @@ def format_instance(instance):
     data = dict()
     for key, value in instance._data.iteritems():
         try:
-            value = str(value)
+            json.dumps(value)
         except:
             value = "Not supported"
-        data[key] = str(value)
+        data[key] = value
 
     return {
         "name": instance.data("name"),
