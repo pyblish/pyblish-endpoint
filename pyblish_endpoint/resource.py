@@ -71,6 +71,11 @@ def format_instance(instance):
     data = dict()
     for key, value in instance._data.iteritems():
         try:
+            key = str(key)
+        except:
+            continue
+
+        try:
             json.dumps(value)
         except:
             value = "Not supported"
@@ -87,6 +92,22 @@ def format_instance(instance):
 
 
 def format_plugin(plugin):
+    """Serialise `plugin`
+
+    Attributes:
+        name: Name of Python class
+        version: Plug-in version
+        category: Optional category
+        requires: Plug-in requirements
+        order: Plug-in order
+        optional: Is the plug-in optional?
+        doc: The plug-in documentation
+        hasRepair: Can the plug-in perform a repair?
+        type: Which baseclass does the plug-in stem from? E.g. Validator
+        active: Does the plug-in have any compatible instances?
+
+    """
+
     formatted = {
         "name": plugin.__name__,
         "version": plugin.version,
@@ -94,7 +115,8 @@ def format_plugin(plugin):
         "requires": plugin.requires,
         "order": plugin.order,
         "optional": plugin.optional,
-        "doc": getattr(plugin, "doc", plugin.__doc__)
+        "doc": getattr(plugin, "doc", plugin.__doc__),
+        "hasRepair": hasattr(plugin, "repair_instance")
     }
 
     try:
@@ -106,7 +128,7 @@ def format_plugin(plugin):
         # is either a bug or some (very) custom behavior
         # on the users part.
         log.critical("This is a bug")
-        formatted["type"] = "Invalid"
+        formatted["type"] = "Unknown"
 
     for attr in ("hosts", "families"):
         if hasattr(plugin, attr):
