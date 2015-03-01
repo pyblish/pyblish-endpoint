@@ -66,7 +66,7 @@ def test_instances():
 
     instance = data[0]
     check_keys(instance, ["name", "family",
-                          "nodes", "data", "publish"])
+                          "children", "data", "publish"])
 
 
 @with_setup(setup)
@@ -91,7 +91,7 @@ def test_instance():
 
     assert data, "%r is empty!" % data
 
-    check_keys(data, ["nodes", "data"])
+    check_keys(data, ["children", "data"])
 
 
 @with_setup(setup)

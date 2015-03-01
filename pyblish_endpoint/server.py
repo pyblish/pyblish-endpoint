@@ -11,6 +11,7 @@ import flask.ext.restful
 # Local library
 import service as service_mod
 import resource
+import mocking
 
 log = logging.getLogger("endpoint")
 
@@ -97,9 +98,10 @@ def start_debug_server(port, **kwargs):
 
     os.environ["ENDPOINT_PORT"] = str(port)
 
-    service_mod.MockService.SLEEP_DURATION = .5
-    service_mod.MockService.PERFORMANCE = service_mod.MockService.FAST
-    service_mod.register_service(service_mod.MockService)
+    Service = mocking.MockService
+    Service.SLEEP_DURATION = .5
+    Service.PERFORMANCE = Service.FAST
+    service_mod.register_service(Service)
 
     # Expose vendor libraries to external Python process
     # triggered by running Flask in debug-mode.

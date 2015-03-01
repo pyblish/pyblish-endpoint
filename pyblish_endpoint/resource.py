@@ -18,7 +18,7 @@ import flask.ext.restful
 import flask.ext.restful.reqparse
 
 # Local library
-from service import current_service
+import service
 
 log = logging.getLogger("endpoint")
 
@@ -49,25 +49,74 @@ def format_error(error):
 
 
 def format_instance(instance):
+    """Serialise `instance`
+
+    For children to be visualised and modified,
+    they must provide an appropriate implementation
+    of __str__.
+
+    Data that isn't JSON compatible cannot be
+    visualised nor modified.
+
+    """
+
+    children = list()
+    for child in instance:
+        try:
+            json.dumps(child)
+        except:
+            child = "Invalid"
+        children.append(child)
+
+    data = dict()
+    for key, value in instance._data.iteritems():
+        try:
+            key = str(key)
+        except:
+            continue
+
+        try:
+            json.dumps(value)
+        except:
+            value = "Not supported"
+        data[key] = value
+
     return {
         "name": instance.data("name"),
         "family": instance.data("family"),
         "objName": instance.name,
-        "nodes": [str(x) for x in instance],
-        # "data": instance.data(),  # Temporarily disabled,
-        "data": {},
-        "publish": instance.data("publish")
+        "children": children,
+        "data": data,
+        "publish": instance.data("publish"),
     }
 
 
 def format_plugin(plugin):
+    """Serialise `plugin`
+
+    Attributes:
+        name: Name of Python class
+        version: Plug-in version
+        category: Optional category
+        requires: Plug-in requirements
+        order: Plug-in order
+        optional: Is the plug-in optional?
+        doc: The plug-in documentation
+        hasRepair: Can the plug-in perform a repair?
+        type: Which baseclass does the plug-in stem from? E.g. Validator
+        active: Does the plug-in have any compatible instances?
+
+    """
+
     formatted = {
         "name": plugin.__name__,
         "version": plugin.version,
+        "category": getattr(plugin, "category", None),
         "requires": plugin.requires,
         "order": plugin.order,
-        "active": False,
-        "optional": plugin.optional
+        "optional": plugin.optional,
+        "doc": getattr(plugin, "doc", plugin.__doc__),
+        "hasRepair": hasattr(plugin, "repair_instance")
     }
 
     try:
@@ -79,7 +128,7 @@ def format_plugin(plugin):
         # is either a bug or some (very) custom behavior
         # on the users part.
         log.critical("This is a bug")
-        formatted["type"] = "Invalid"
+        formatted["type"] = "Unknown"
 
     for attr in ("hosts", "families"):
         if hasattr(plugin, attr):
@@ -112,8 +161,8 @@ class ApplicationApi(flask.ext.restful.Resource):
 
         data = {}
 
-        data.update(current_service().system())
-        data.update(current_service().versions())
+        data.update(service.current().system())
+        data.update(service.current().versions())
 
         return data, 200
 
@@ -172,7 +221,7 @@ class SessionApi(flask.ext.restful.Resource):
 
     def post(self):
         try:
-            status = current_service().init()
+            status = service.current().init()
         except Exception:
             _, _, exc_tb = sys.exc_info()
             tb = traceback.extract_tb(exc_tb)[-1]
@@ -193,7 +242,7 @@ class StateApi(flask.ext.restful.Resource):
     """
 
     def get(self):
-        return {"ok": True, "state": current_service().state}
+        return {"ok": True, "state": service.current().state}
 
     def post(self):
         parser = flask.ext.restful.reqparse.RequestParser()
@@ -212,7 +261,7 @@ class StateApi(flask.ext.restful.Resource):
             log.error(message)
             return {"ok": False, "message": message}, 500
 
-        current_service().state = state
+        service.current().state = state
         return {"ok": True, "state": state}, 200
 
 
@@ -224,7 +273,7 @@ class NextApi(flask.ext.restful.Resource):
     """
 
     def post(self):
-        result = current_service().next()
+        result = service.current().next()
 
         if result is not None:
             plugin = result["plugin"]
@@ -269,8 +318,8 @@ class PluginsListApi(flask.ext.restful.Resource):
 
         """
 
-        plugins = current_service().plugins
-        context = current_service().context
+        plugins = service.current().plugins
+        context = service.current().context
 
         families = set()
         for instance in context:
@@ -330,7 +379,7 @@ class InstancesListApi(flask.ext.restful.Resource):
 
         """
 
-        instances = list(current_service().context)
+        instances = list(service.current().context)
 
         response = []
         for instance in instances:
@@ -354,7 +403,7 @@ class InstancesApi(flask.ext.restful.Resource):
 
         """
 
-        instances = list(current_service().context)
+        instances = list(service.current().context)
 
         try:
             instance = find_instance(instance_id, instances)
@@ -381,7 +430,7 @@ class NodesListApi(flask.ext.restful.Resource):
 
         """
 
-        instances = list(current_service().context)
+        instances = list(service.current().context)
 
         try:
             instance = find_instance(instance_id, instances)
@@ -411,7 +460,7 @@ class DataListApi(flask.ext.restful.Resource):
 
         """
 
-        instances = list(current_service().context)
+        instances = list(service.current().context)
 
         try:
             instance = find_instance(instance_id, instances)
