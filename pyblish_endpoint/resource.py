@@ -142,7 +142,6 @@ class Dispatch(flask.ext.restful.Resource):
         command = queue.get()  # Block
 
         if command == "show":
-            print "Showing!"
             return {"ok": True, "show": True}, 200
 
         return {"ok": False, "result": "Command not recognised: %s" % command}, 400
