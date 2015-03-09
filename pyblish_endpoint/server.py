@@ -3,6 +3,7 @@
 # Standard library
 import os
 import logging
+import threading
 
 # Dependencies
 import flask
@@ -28,6 +29,7 @@ resource_map = {
     "/instances/<instance_id>/data/<data_id>": resource.DataApi,
     "/state": resource.StateApi,
     "/next": resource.NextApi,
+    "/dispatch": resource.Dispatch,
 }
 
 endpoint_map = {
@@ -39,6 +41,7 @@ endpoint_map = {
     "/instances/<instance_id>/data":    "instance.data",
     "/state":                           "state",
     "/next":                            "next",
+    "/dispatch":                        "dispatch",
 }
 
 
@@ -74,6 +77,21 @@ def start_production_server(port, service, **kwargs):
     service_mod.register_service(service, force=True)
     app, api = create_app()
     app.run(port=port)
+
+
+def start_async_production_server(port, service):
+    """Start production server in a separate thread
+
+    For arguments, see func:`start_production_server`
+
+    """
+
+    def worker():
+        start_production_server(port, service)
+
+    t = threading.Thread(target=worker)
+    t.daemon = True
+    t.start()
 
 
 def start_debug_server(port, **kwargs):

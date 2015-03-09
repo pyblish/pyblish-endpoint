@@ -2,15 +2,16 @@
 
 Attributes:
     log: Current logger
+    queue: Request-cache for request-response inversion
 
 """
 
 # Standard library
 import sys
 import json
-import uuid
 import logging
 import traceback
+import Queue
 
 # Dependencies
 import pyblish.api
@@ -21,20 +22,7 @@ import flask.ext.restful.reqparse
 import service
 
 log = logging.getLogger("endpoint")
-
-
-def unique_id():
-    """Return a universally unique identifier
-
-    Using as few characters as possible. The condition is
-    that a process is typically executed 1 at a time, at
-    a given rate of 2/second, and shall remain referencable
-    for a short period of time (10-20 minutes) after first
-    being created.
-
-    """
-
-    return uuid.uuid4().hex[:5]
+queue = Queue.Queue()
 
 
 def format_error(error):
@@ -135,6 +123,29 @@ def format_plugin(plugin):
             formatted[attr] = getattr(plugin, attr)
 
     return formatted
+
+
+class Dispatch(flask.ext.restful.Resource):
+    """Dispatch API
+
+    Send requests to client from server
+
+    GET /dispatch
+    POST /dispatch
+
+    """
+
+    def get(self):
+        return {"ok": True, "queue": list(queue.queue)}, 200
+
+    def post(self):
+        command = queue.get()  # Block
+
+        if command == "show":
+            print "Showing!"
+            return {"ok": True, "show": True}, 200
+
+        return {"ok": False, "result": "Command not recognised: %s" % command}, 400
 
 
 class ApplicationApi(flask.ext.restful.Resource):
