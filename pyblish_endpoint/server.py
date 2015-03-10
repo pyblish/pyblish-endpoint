@@ -76,7 +76,7 @@ def start_production_server(port, service, **kwargs):
 
     service_mod.register_service(service, force=True)
     app, api = create_app()
-    app.run(port=port)
+    app.run(port=port, threaded=True)
 
 
 def start_async_production_server(port, service):
@@ -87,7 +87,7 @@ def start_async_production_server(port, service):
     """
 
     def worker():
-        start_production_server(port, service)
+        start_production_server(port, service, threaded=True)
 
     t = threading.Thread(target=worker)
     t.daemon = True
@@ -131,7 +131,7 @@ def start_debug_server(port, **kwargs):
     os.environ["PYTHONPATH"] += os.pathsep + vendor_dir
 
     app, api = create_app()
-    app.run(debug=True, port=port)
+    app.run(debug=True, port=port, threaded=True)
 
 
 if __name__ == '__main__':
