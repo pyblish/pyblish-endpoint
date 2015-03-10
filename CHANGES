@@ -5,6 +5,8 @@ Version 1.1.4
 -------------
 
 - Preloading
+- Overridable order; modify a plug-ins `order` attribute for
+    custom ordering.
 
 Version 1.1.3
 -------------

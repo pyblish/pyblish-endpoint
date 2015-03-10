@@ -67,19 +67,21 @@ class EndpointService(object):
         return True
 
     def sort_plugins(self, plugins):
-        sorted_plugins = list()
-        for type in (pyblish.api.Selector,
-                     pyblish.api.Validator,
-                     pyblish.api.Extractor,
-                     pyblish.api.Conformer):
-            for plugin in plugins:
-                if issubclass(plugin, type):
-                    sorted_plugins.append(plugin)
+        """Return `plugin` in order
 
-        for plugin in plugins:
-            assert plugin in sorted_plugins
+        Their order is determined by their `order` attribute,
+        which defaults to their standard execution order:
 
-        return sorted_plugins
+            1. Selection
+            2. Validation
+            3. Extraction
+            4. Conform
+
+        *But may be overridden.
+
+        """
+
+        return sorted(plugins, key=lambda p: p.order)
 
     def system(self):
         """Confirm connection and return system state"""
