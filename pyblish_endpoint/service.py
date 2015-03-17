@@ -341,7 +341,23 @@ def processor(obj):
             print "Skipping %s; disabled" % plugin
             continue
 
+        try:
+            next_index = obj.plugins.index(plugin) + 1
+            next_plugin = obj.context[next_index]
+
+            while next_plugin.data("publish") is False:
+                next_index += 1
+                next_plugin = obj.plugins[next_index]
+
+            next_plugin = next_plugin.data("name")
+
+        except IndexError:
+            next_plugin = None
+
         obj.state.current_plugin = plugin.__name__
+        obj.state.next_plugin = next_plugin
+
+        print "Next plugin: %s" % next_plugin
 
         for instance, error in plugin().process(obj.context):
             try:
@@ -351,7 +367,20 @@ def processor(obj):
                 # Context processed, not instance
                 current_instance = None
 
-            obj.state.current_instance = current_instance
+            try:
+                next_index = obj.context.index(instance) + 1
+                next_instance = obj.context[next_index]
+
+                while next_instance.data("publish") is False:
+                    next_index += 1
+                    next_instance = obj.context[next_index]
+
+                next_instance = next_instance.data("name")
+
+            except IndexError:
+                next_instance = None
+
+            print "Next instance: %s" % next_instance
 
             try:
                 _, _, exc_tb = sys.exc_info()
@@ -360,6 +389,8 @@ def processor(obj):
             except:
                 pass
 
+            obj.state.current_instance = current_instance
+            obj.state.next_instance = next_instance
             obj.state.current_error = error
 
             yield
@@ -420,10 +451,18 @@ def format_state(state):
         }
 
     except Exception as e:
-        print e
-        formatted = {}
+        _, _, exc_tb = sys.exc_info()
+        e.traceback = traceback.extract_tb(exc_tb)[-1]
 
-    assert json.dumps(formatted)
+        message = """{message}
+
+Filename: {fname}
+Line: {line_number}
+Function: {func}
+Exc: {exc}
+""".format(**format_error(e))
+
+        formatted = {"error": message}
 
     return formatted
 
@@ -561,6 +600,7 @@ def format_plugin(plugin, data=None):
         "optional": plugin.optional,
         "doc": getattr(plugin, "doc", plugin.__doc__),
         "hasRepair": hasattr(plugin, "repair_instance"),
+        "hasCompatible": False
     }
 
     # Make decisions based on provided `data`

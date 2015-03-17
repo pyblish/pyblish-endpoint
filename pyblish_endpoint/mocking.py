@@ -31,43 +31,42 @@ class MockService(service.EndpointService):
 
     def init(self):
         plugins = []
-        for plugin, superclass in (
-                ["ExtractAsMa", pyblish.api.Extractor],
-                ["ConformAsset", pyblish.api.Conformer]):
-            obj = type(plugin, (superclass,), {})
+        for plugin in PLUGINS:
+            plugin.families = ["napoleon.animation.cache"]
 
-            obj.families = ["napoleon.animation.cache"]
-            if plugin == "ConformAsset":
-                obj.families = ["napoleon.asset.rig"]
+            if plugin.__name__ == "ConformAsset":
+                plugin.families = ["napoleon.asset.rig"]
 
-            obj.hosts = ["python", "maya"]
-            plugins.append(obj)
+            if plugin == ValidateIsIncompatible:
+                plugin.families = ["napoleon.incompatible"]
 
-        fake_instances = ["Peter01", "Richard05", "Steven11"]
+            plugin.hosts = ["python"]
+
+            plugins.append(plugin)
+
         context = pyblish.api.Context()
-        for name in fake_instances[:self.NUM_INSTANCES]:
+        for name in INSTANCES:
             instance = context.create_instance(name=name)
 
             instance._data = {
+                "publish": True,
+                "family": "napoleon.animation.cache",
                 "identifier": "napoleon.instance",
                 "minWidth": 800,
                 "assetSource": "/server/assets/Peter",
                 "destination": "/server/published/assets",
             }
 
-            instance.set_data("publish", True)
-
             if name == "Peter01":
                 instance.set_data("publish", False)
                 instance.set_data("family", "napoleon.asset.rig")
-            else:
-                instance.set_data("family", "napoleon.animation.cache")
+            # else:
+            #     instance.set_data("family", "napoleon.animation.cache")
 
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
-        plugins.append(ValidateFailureMock)
-        plugins.append(ValidateNamespace)
+        pyblish.api.sort_plugins(plugins)
 
         self.context = context
         self.plugins = plugins
@@ -108,6 +107,14 @@ class MockService(service.EndpointService):
             log.info("Completed successfully!")
 
 
+#
+# Test plug-ins
+#
+
+ExtractAsMa = type("ExtractAsMa", (pyblish.api.Extractor,), {})
+ConformAsset = type("ConformAsset", (pyblish.api.Conformer,), {})
+
+
 @pyblish.api.log
 class ValidateNamespace(pyblish.api.Validator):
     families = ["napoleon.animation.cache"]
@@ -115,8 +122,7 @@ class ValidateNamespace(pyblish.api.Validator):
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        self.log.info("Validating namespace..")
-        self.log.info("Completed validating namespace!")
+        pass
 
 
 @pyblish.api.log
@@ -128,3 +134,24 @@ class ValidateFailureMock(pyblish.api.Validator):
 
     def process_instance(self, instance):
         raise ValueError("Instance failed")
+
+
+@pyblish.api.log
+class ValidateIsIncompatible(pyblish.api.Validator):
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+
+INSTANCES = ["Peter01",
+             "Richard05",
+             "Steven11",
+             "Piraya12",
+             "Marcus"]
+PLUGINS = [
+    ExtractAsMa,
+    ConformAsset,
+    ValidateFailureMock,
+    ValidateNamespace,
+    ValidateIsIncompatible
+]
