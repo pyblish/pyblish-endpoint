@@ -30,7 +30,7 @@ class MockService(service.EndpointService):
     PERFORMANCE = NATIVE
 
     def init(self):
-        self.plugins = []
+        plugins = []
         for plugin, superclass in (
                 ["ExtractAsMa", pyblish.api.Extractor],
                 ["ConformAsset", pyblish.api.Conformer]):
@@ -41,7 +41,7 @@ class MockService(service.EndpointService):
                 obj.families = ["napoleon.asset.rig"]
 
             obj.hosts = ["python", "maya"]
-            self.plugins.append(obj)
+            plugins.append(obj)
 
         fake_instances = ["Peter01", "Richard05", "Steven11"]
         context = pyblish.api.Context()
@@ -66,15 +66,15 @@ class MockService(service.EndpointService):
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
-        self.plugins.append(ValidateFailureMock)
-        self.plugins.append(ValidateNamespace)
-        self.plugins = self.sort_plugins(self.plugins)
+        plugins.append(ValidateFailureMock)
+        plugins.append(ValidateNamespace)
 
         self.context = context
+        self.plugins = plugins
         self.processor = None
 
-    def next(self):
-        result = super(MockService, self).next()
+    def advance(self):
+        result = super(MockService, self).advance()
         self.sleep()
         return result
 

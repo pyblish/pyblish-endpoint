@@ -1,12 +1,14 @@
 from nose.tools import *
 
-import pyblish_endpoint.mocking
+
+from pyblish_endpoint import service
+from pyblish_endpoint import mocking
 
 
 def test_service_standalone():
     """Service is callable on its own"""
-    service = pyblish_endpoint.mocking.MockService()
-    service.init()
+    s = mocking.MockService()
+    s.init()
 
-    insts = list(service.context)
+    insts = list(s.context)
     eq_(len(insts) > 0, True)

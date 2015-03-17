@@ -10,53 +10,39 @@ import flask
 import flask.ext.restful
 
 # Local library
-import service as service_mod
-import resource
 import mocking
+import resource
+import service as service_mod
 
 log = logging.getLogger("endpoint")
 
 prefix = "/pyblish/v1"
 resource_map = {
-    "/application": resource.ApplicationApi,
-    "/application/shutdown": resource.ApplicationShutdownApi,
-    "/plugins": resource.PluginsListApi,
-    "/session": resource.SessionApi,
-    "/instances": resource.InstancesListApi,
-    "/instances/<instance_id>": resource.InstancesApi,
-    "/instances/<instance_id>/nodes": resource.NodesListApi,
-    "/instances/<instance_id>/data": resource.DataListApi,
-    "/instances/<instance_id>/data/<data_id>": resource.DataApi,
     "/state": resource.StateApi,
-    "/next": resource.NextApi,
-    "/dispatch": resource.Dispatch,
+    "/client": resource.ClientApi,
 }
 
 endpoint_map = {
-    "/application":                     "application",
-    "/application/shutdown":            "application.shutdown",
-    "/instances/<instance_id>":         "instance",
-    "/instances":                       "instances",
-    "/instances/<instance_id>/nodes":   "instance.nodes",
-    "/instances/<instance_id>/data":    "instance.data",
-    "/state":                           "state",
-    "/next":                            "next",
-    "/dispatch":                        "dispatch",
+    "/state":  "state",
+    "/client": "client",
 }
+
+current_server = None
+current_server_thread = None
 
 
 def create_app():
-    log.debug("Creating app")
+    log.info("Creating app")
     app = flask.Flask(__name__)
     app.config["TESTING"] = True
     api = flask.ext.restful.Api(app)
 
-    log.debug("Mapping URIs")
+    log.info("Mapping URIs")
     for uri, _resource in resource_map.items():
         endpoint = endpoint_map.get(uri)
         api.add_resource(_resource, prefix + uri, endpoint=endpoint)
 
-    log.debug("App created")
+    log.info("App created")
     return app, api
 
 
@@ -78,6 +64,9 @@ def start_production_server(port, service, **kwargs):
     app, api = create_app()
     app.run(port=port, threaded=True)
 
+    global current_server
+    current_server = app
+
 
 def start_async_production_server(port, service):
     """Start production server in a separate thread
@@ -92,6 +81,9 @@ def start_async_production_server(port, service):
     t = threading.Thread(target=worker)
     t.daemon = True
     t.start()
+
+    global current_server_thread
+    current_server_thread = t
 
 
 def start_debug_server(port, **kwargs):

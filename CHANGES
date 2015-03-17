@@ -1,6 +1,13 @@
 Changelog
 =========
 
+Version 1.1.5
+-------------
+
+- Added heartbeat
+- Implemented State
+- Refactoring
+
 Version 1.1.4
 -------------
 

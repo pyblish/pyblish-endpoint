@@ -4,31 +4,20 @@ from .. import service
 
 
 class TestService(service.EndpointService):
-    """Service for testing
-
-    Attributes:
-        SLEEP_DURATION: Fake processing delay, in milliseconds
-        NUM_INSTANCES: Fake amount of available instances (max: 2)
-        PERFORMANCE: Enum of fake performance. Available values are
-            SLOW, MODERATE, FAST, NATIVE
-
-    """
-
     def init(self):
-        self.plugins = []
+        self.reset()
+
+        context = pyblish.api.Context()
+        plugins = []
+
         for plugin in PLUGINS:
             plugin.families = ["napoleon.animation.cache"]
             if plugin == "ConformAsset":
                 plugin.families = ["napoleon.asset.rig"]
 
-            plugin.hosts = ["python", "maya"]
-            self.plugins.append(plugin)
+            plugin.hosts = ["python"]
+            plugins.append(plugin)
 
-        self.plugins.append(ValidateFailureMock)
-        self.plugins.append(ValidateNamespace)
-        self.plugins = self.sort_plugins(self.plugins)
-
-        context = pyblish.api.Context()
         for name in INSTANCES:
             instance = context.create_instance(name=name)
 
@@ -39,19 +28,20 @@ class TestService(service.EndpointService):
                 "destination": "/server/published/assets",
             }
 
-            instance.set_data("publish", True)
-
             if name == "Peter01":
                 instance.set_data("publish", False)
                 instance.set_data("family", "napoleon.asset.rig")
             else:
+                instance.set_data("publish", True)
                 instance.set_data("family", "napoleon.animation.cache")
 
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
-        self.context = context
+        pyblish.api.sort_plugins(plugins)
 
+        self.context = context
+        self.plugins = plugins
 
 #
 # Test plug-ins
@@ -68,8 +58,7 @@ class ValidateNamespace(pyblish.api.Validator):
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        self.log.info("Validating namespace..")
-        self.log.info("Completed validating namespace!")
+        pass
 
 
 @pyblish.api.log
@@ -83,5 +72,14 @@ class ValidateFailureMock(pyblish.api.Validator):
         raise ValueError("Instance failed")
 
 
-INSTANCES = ["Peter01", "Richard05", "Steven11", "Piraya12", "Marcus"]
-PLUGINS = [ExtractAsMa, ConformAsset, ValidateFailureMock, ValidateNamespace]
+INSTANCES = ["Peter01",
+             "Richard05",
+             "Steven11",
+             "Piraya12",
+             "Marcus"]
+PLUGINS = [
+    ExtractAsMa,
+    ConformAsset,
+    ValidateFailureMock,
+    ValidateNamespace
+]
