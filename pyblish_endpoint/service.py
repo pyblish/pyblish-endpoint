@@ -23,7 +23,6 @@ import time
 import json
 import getpass
 import logging
-import warnings
 import traceback
 
 import pyblish
@@ -45,14 +44,6 @@ class State(dict):
     def __init__(self, service):
         self.service = service
 
-        self.current_plugin = None
-        self.current_instance = None
-        self.current_error = None
-        self.current_records = None
-
-        self.next_plugin = None
-        self.next_instance = None
-
     def compute(self):
         """Format current state of Service into JSON-compatible dictionary
 
@@ -69,50 +60,29 @@ class State(dict):
 
         state = format_state({
             "plugins": self.service.plugins,
-            "context": self.service.context,
-
-            "current_plugin": self.current_plugin,
-            "current_instance": self.current_instance,
-            "current_error": self.current_plugin,
-            "current_records": self.current_records,
-
-            "next_plugin": self.next_plugin,
-            "next_instance": self.next_instance,
+            "context": self.service.context
         })
 
         super(State, self).update(state)
 
-    def update(self, state):
-        """Parse changes from `state` and apply to Service
+    def update(self, changes):
+        """Parse changes from `changes` and apply to Service
 
         Given a dictionary of changes, apply changes to
         corresponding instances and plug-ins.
 
-        For example, a plug-in may have been toggled off; an
-        instance may have had it's data modified.
-
         Arguments:
-            state (dict): Dictionary of changes.
+            changes (dict): Dictionary of changes.
 
         """
 
-        # NOTE(marcus): Temporary
-        self.current_plugin = None
-        self.current_instance = None
-        self.current_plugin = None
-        self.current_records = None
-        self.next_plugin = None
-        self.next_instance = None
+        context_changes = changes["context"]
 
-        s_context = state.get("context", {})
-        s_plugins = state.get("plugins", [])
+        for name, changes in context_changes.iteritems():
 
-        # s_ prefix represents serialised data
-        for s_instance in s_context.get("children", []):
-            name = s_instance["name"]
-            instance = self.service.instance_by_name(name)
-
-            if not instance:
+            try:
+                instance = self.service.context[name]
+            except KeyError:
                 log.error(
                     "Instance from client does "
                     "not exist on server: %s "
@@ -120,49 +90,45 @@ class State(dict):
                     % (name, [i.name for i in self.service.context]))
                 continue
 
-            changed_data = s_instance.get("data", {})
+            for key, change in changes.iteritems():
+                current_value = instance.data(key)
 
-            for key, value in changed_data.iteritems():
+                if current_value == change["new"]:
+                    continue
+
                 print(
                     "Changing \"{instance}.{data}\" from "
                     "\"{from_}\" to \"{to}\"".format(
                         instance=name,
                         data=key,
                         from_=instance.data(key),
-                        to=value))
+                        to=change["new"]))
 
-                instance.set_data(key, value)
+                instance.set_data(key, change["new"])
 
-        for s_plugin in s_plugins:
-            name = s_plugin["name"]
-            plugin = self.service.plugin_by_name(name)
 
-            if not plugin:
-                log.error(
-                    "Plugin from client does "
-                    "not exist on server: %s "
-                    "(available plugins: %s"
-                    % (name, [p.name for p in self.service.plugins]))
-                continue
+class Plugins(list):
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return super(Plugins, self).__getitem__(index)
 
-            changed_data = s_plugin.get("data", {})
+        for item in self:
+            if item.__name__ == index:
+                return item
 
-            if changed_data:
-                for key, value in changed_data.iteritems():
-                    if key == "publish" and value is False:
-                        print "Disabling %s" % plugin.__name__
-                        plugin.flags = plugin.Disabled
-                    else:
-                        setattr(plugin, key, value)
+        raise KeyError("%s not in list" % index)
 
-    def clear(self):
-        super(State, self).clear()
-        self.current_plugin = None
-        self.current_instance = None
-        self.current_plugin = None
-        self.current_records = None
-        self.next_plugin = None
-        self.next_instance = None
+
+class Context(pyblish.api.Context):
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return super(Plugins, self).__getitem__(index)
+
+        for item in self:
+            if item.name == index:
+                return item
+
+        raise KeyError("%s not in list" % index)
 
 
 class EndpointService(object):
@@ -176,9 +142,8 @@ class EndpointService(object):
     _current = None
 
     def __init__(self):
-        self.context = None
-        self.plugins = None
-        self.processor = None
+        self.context = Context()
+        self.plugins = Plugins()
 
         self.state = State(self)
 
@@ -186,16 +151,16 @@ class EndpointService(object):
         """Create context and discover plug-ins and instances"""
         self.reset()
 
-        context = pyblish.api.Context()
-        plugins = pyblish.api.discover()
+        self.plugins[:] = pyblish.api.discover()
 
         log.info("Performing selection..")
-        for plugin in list(plugins):
+        for plugin in self.plugins:
+
             if not issubclass(plugin, pyblish.api.Selector):
                 continue
 
             log.info("Processing %s" % plugin)
-            for inst, err in plugin().process(context):
+            for inst, err in plugin().process(self.context):
                 pass
 
         # Append additional metadata to context
@@ -211,31 +176,21 @@ class EndpointService(object):
                            "endpointVersion": version,
                            "pythonVersion": sys.version}.iteritems():
 
-            context.set_data(key, value)
-
-        self.context = context
-        self.plugins = plugins
+            self.context.set_data(key, value)
 
     def reset(self):
-        self.context = None
-        self.plugins = None
-        self.processor = None
+        self.context = Context()
+        self.plugins = Plugins()
         self.state.clear()
 
-    def system(self):
-        warnings.warn("system() deprecated")
-        return {}
+    def process(self, plugin, instance):
+        """Process `instance` with `plugin`
 
-    def versions(self):
-        warnings.warn("versions() deprecated")
-        return {}
+        Arguments:
+            plugin (str): Id of plug-in to process
+            instance (str): Id of instance to process
 
-    def next(self):
-        warnings.warn("next() deprecated; use advance()")
-        return self.advance()
-
-    def advance(self):
-        """Process current plug-in and advance state"""
+        """
 
         records = list()
         handler = MessageHandler(records)
@@ -243,157 +198,36 @@ class EndpointService(object):
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
 
-        if self.processor is None:
-            self.processor = processor(self)
+        Plugin = self.plugins[plugin]
 
-        try:
-            self.processor.next()
+        __count = 0
+        __time = time.time()
+        success = True
+        o_instance = None
+        formatted_error = None
+        for o_instance, error in Plugin().process(self.context,
+                                                  instances=[instance]):
+            if error is not None:
+                success = False
+                formatted_error = format_error(error)
 
-            formatted_records = list()
-            for record in records:
-                formatted_records.append(format_record(record))
+            __count += 1
 
-            if self.state.current_error is not None:
-                formatted_error = format_error(self.state.current_error)
-            else:
-                formatted_error = None
+        assert (o_instance.name == instance) if o_instance else True
+        assert __count <= 2, "Processed more than two items: %i" % __count
 
-            return {
-                "current_plugin": self.state.current_plugin,
-                "current_instance": self.state.current_instance,
-                "next_plugin": self.state.next_plugin,
-                "next_instance": self.state.next_instance,
-                "error": formatted_error,
-                "records": formatted_records
-            }
+        formatted_records = list()
+        for record in records:
+            formatted_records.append(format_record(record))
 
-        except StopIteration:
-            self.processor = None
-            return False
-
-        finally:
-            root_logger.removeHandler(handler)
-
-    def plugin_by_name(self, name):
-        """Return plugin by `name`
-
-        Attributes:
-            name (str): Name of plug-in
-
-        """
-
-        by_name = dict()
-        for plugin in self.plugins:
-            by_name[plugin.__name__] = plugin
-        return by_name.get(name)
-
-    def plugin_by_index(self, index):
-        """Return plug-in by `index`
-
-        Attributes:
-            index (int): Index of plug-in
-
-        """
-
-        return self.plugins[index]
-
-    def instance_by_index(self, index):
-        """Return instance by `index`
-
-        Attributes:
-            index (int): Index of instance
-
-        """
-
-        return self.context[index]
-
-    def instance_by_name(self, name):
-        """Return instance by `name`
-
-        Attributes:
-            name (str): Name of instance
-
-        """
-
-        by_name = dict()
-        for instance in self.context:
-            by_name[instance.data("name")] = instance
-        return by_name.get(name)
-
-
-def processor(obj):
-    """Publishing processor
-
-    Given a service, provide for an iterator to advance
-    it's current state; modifying state as it goes.
-
-    Attributes:
-        obj (EndpointService): Service to process
-
-    """
-
-    if not obj.plugins:
-        raise StopIteration("No plug-ins for processor")
-
-    for plugin in obj.plugins:
-
-        if plugin.flags & plugin.Disabled:
-            print "Skipping %s; disabled" % plugin
-            continue
-
-        try:
-            next_index = obj.plugins.index(plugin) + 1
-            next_plugin = obj.context[next_index]
-
-            while next_plugin.data("publish") is False:
-                next_index += 1
-                next_plugin = obj.plugins[next_index]
-
-            next_plugin = next_plugin.data("name")
-
-        except IndexError:
-            next_plugin = None
-
-        obj.state.current_plugin = plugin.__name__
-        obj.state.next_plugin = next_plugin
-
-        print "Next plugin: %s" % next_plugin
-
-        for instance, error in plugin().process(obj.context):
-            try:
-                current_instance = instance.data("name")
-
-            except:
-                # Context processed, not instance
-                current_instance = None
-
-            try:
-                next_index = obj.context.index(instance) + 1
-                next_instance = obj.context[next_index]
-
-                while next_instance.data("publish") is False:
-                    next_index += 1
-                    next_instance = obj.context[next_index]
-
-                next_instance = next_instance.data("name")
-
-            except IndexError:
-                next_instance = None
-
-            print "Next instance: %s" % next_instance
-
-            try:
-                _, _, exc_tb = sys.exc_info()
-                error.traceback = traceback.extract_tb(
-                    exc_tb)[-1]
-            except:
-                pass
-
-            obj.state.current_instance = current_instance
-            obj.state.next_instance = next_instance
-            obj.state.current_error = error
-
-            yield
+        return {
+            "success": success,
+            "plugin": plugin,
+            "instance": instance or "Context",
+            "error": formatted_error,
+            "records": formatted_records,
+            "duration": time.time() - __time
+        }
 
 
 class MessageHandler(logging.Handler):
@@ -405,8 +239,8 @@ class MessageHandler(logging.Handler):
 
     def emit(self, record):
         # Do not record server messages
-        if record.name in ["werkzeug"]:
-            return
+        # if record.name in ["werkzeug"]:
+        #     return
 
         if record.levelno < logging.INFO:
             return
@@ -441,13 +275,7 @@ def format_state(state):
             "context": format_context(state["context"]),
             "plugins": format_plugins(
                 state["plugins"],
-                data={"context": state["context"]}),
-
-            "current_instance": state["current_instance"],
-            "current_plugin": state["current_plugin"],
-
-            "next_plugin": state["next_plugin"],
-            "next_instance": state["next_instance"],
+                data={"context": state["context"]})
         }
 
     except Exception as e:
@@ -514,7 +342,7 @@ def format_instance(instance, data=None):
 
     Attributes:
         name (str): Name of instance
-        objName (str, optional): Name of physical object
+        niceName (str, optional): Nice name of instance
         family (str): Name of compatible family
         children (list, optional): Associated children
         data (dict, optional): Associated data
@@ -536,9 +364,9 @@ def format_instance(instance, data=None):
     data = format_data(instance._data)
 
     return {
-        "name": instance.data("name"),
+        "name": instance.name,
         "family": instance.data("family"),
-        "objName": instance.name,
+        "niceName": instance.data("name"),
         "children": children,
         "data": data,
         "publish": instance.data("publish"),

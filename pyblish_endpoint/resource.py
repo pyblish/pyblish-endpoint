@@ -73,7 +73,10 @@ class StateApi(flask.ext.restful.Resource):
         return {"ok": True, "state": state}
 
     def put(self):
-        """Advance state
+        """Process plug-in
+
+        :<json string plugin: Plug-in to process
+        :<json string instance: Instance to process
 
         :>jsonarr string ok: Status message
 
@@ -81,14 +84,29 @@ class StateApi(flask.ext.restful.Resource):
         :status 404: Nothing left to advance to
 
         """
+        parser = flask.ext.restful.reqparse.RequestParser()
+        parser.add_argument("plugin", required=True, type=str)
+        parser.add_argument("instance", required=True, type=str)
+
+        kwargs = parser.parse_args()
+
+        plugin = kwargs["plugin"]
+        instance = kwargs["instance"]
 
         service = service_mod.current()
-        state = service.advance()
 
-        if state:
-            return {"ok": True, "state": state}, 200
+        try:
+            result = service.process(plugin, instance)
+        except Exception as e:
+            try:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                message = "".join(traceback.format_exception(
+                    exc_type, exc_value, exc_traceback))
+            except:
+                message = str(e)
+            return {"ok": False, "message": message}, 500
 
-        return {"ok": True}, 404
+        return {"ok": True, "result": result}, 200
 
     def post(self):
         """Update state
@@ -106,18 +124,18 @@ class StateApi(flask.ext.restful.Resource):
         """
 
         parser = flask.ext.restful.reqparse.RequestParser()
-        parser.add_argument("state", type=str)
+        parser.add_argument("changes", type=str)
 
         kwargs = parser.parse_args()
         service = service_mod.current()
 
-        if kwargs["state"] is None:
+        if kwargs["changes"] is None:
             service.init()
 
         else:
             try:
-                state = json.loads(kwargs["state"])
-                service.state.update(state)
+                changes = json.loads(kwargs["changes"])
+                service.state.update(changes)
 
             except ValueError:
                 message = "Could not de-serialise state: %r" % kwargs
@@ -126,15 +144,16 @@ class StateApi(flask.ext.restful.Resource):
 
             except Exception as e:
                 try:
-                    _, _, exc_tb = sys.exc_info()
-                    message = traceback.format_tb(exc_tb)[-1]
+                    exc_type, exc_value, exc_traceback = sys.exc_info()
+                    message = "".join(traceback.format_exception(
+                        exc_type, exc_value, exc_traceback))
                 except:
                     message = str(e)
 
                 log.error(message)
                 return {"ok": False, "message": str(message)}, 500
 
-            return {"ok": True, "state": state}, 200
+            return {"ok": True, "changes": changes}, 200
 
         return {"ok": True}, 200
 

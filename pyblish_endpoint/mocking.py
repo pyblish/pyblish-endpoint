@@ -30,7 +30,8 @@ class MockService(service.EndpointService):
     PERFORMANCE = NATIVE
 
     def init(self):
-        plugins = []
+        self.reset()
+
         for plugin in PLUGINS:
             plugin.families = ["napoleon.animation.cache"]
 
@@ -42,11 +43,10 @@ class MockService(service.EndpointService):
 
             plugin.hosts = ["python"]
 
-            plugins.append(plugin)
+            self.plugins.append(plugin)
 
-        context = pyblish.api.Context()
         for name in INSTANCES:
-            instance = context.create_instance(name=name)
+            instance = self.context.create_instance(name=name)
 
             instance._data = {
                 "publish": True,
@@ -66,14 +66,10 @@ class MockService(service.EndpointService):
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
-        pyblish.api.sort_plugins(plugins)
+        pyblish.api.sort_plugins(self.plugins)
 
-        self.context = context
-        self.plugins = plugins
-        self.processor = None
-
-    def advance(self):
-        result = super(MockService, self).advance()
+    def process(self, *args, **kwargs):
+        result = super(MockService, self).process(*args, **kwargs)
         self.sleep()
         return result
 
@@ -122,7 +118,7 @@ class ValidateNamespace(pyblish.api.Validator):
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        pass
+        self.log.info("Validating the namespace of %s" % instance.data("name"))
 
 
 @pyblish.api.log
@@ -133,7 +129,8 @@ class ValidateFailureMock(pyblish.api.Validator):
     optional = True
 
     def process_instance(self, instance):
-        raise ValueError("Instance failed")
+        self.log.info("About to fail..")
+        raise ValueError("ValidateFailureMock was destined to fail")
 
 
 @pyblish.api.log
