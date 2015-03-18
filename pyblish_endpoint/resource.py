@@ -70,7 +70,11 @@ class StateApi(flask.ext.restful.Resource):
 
         state = service_mod.current().state
         state.compute()
-        return {"ok": True, "state": state}
+
+        if "error" in state:
+            return {"ok": False, "message": state["error"]}, 500
+
+        return {"ok": True, "state": state}, 200
 
     def put(self):
         """Process plug-in

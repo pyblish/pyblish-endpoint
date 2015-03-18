@@ -113,6 +113,7 @@ ConformAsset = type("ConformAsset", (pyblish.api.Conformer,), {})
 
 @pyblish.api.log
 class ValidateNamespace(pyblish.api.Validator):
+    """Validate the namespaces, or else"""
     families = ["napoleon.animation.cache"]
     hosts = ["*"]
     version = (0, 0, 1)
@@ -123,10 +124,12 @@ class ValidateNamespace(pyblish.api.Validator):
 
 @pyblish.api.log
 class ValidateFailureMock(pyblish.api.Validator):
+    """Plug-in that always fails"""
     families = ["*"]
     hosts = ["*"]
     version = (0, 0, 1)
     optional = True
+    order = pyblish.api.Validator.order + 0.1
 
     def process_instance(self, instance):
         self.log.info("About to fail..")
@@ -135,6 +138,7 @@ class ValidateFailureMock(pyblish.api.Validator):
 
 @pyblish.api.log
 class ValidateIsIncompatible(pyblish.api.Validator):
+    """This plug-in should never appear.."""
     hosts = ["*"]
     version = (0, 0, 1)
     optional = True

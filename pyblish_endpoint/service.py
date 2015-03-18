@@ -27,6 +27,7 @@ import traceback
 
 import pyblish
 import pyblish.api
+import pyblish.plugin
 
 from version import version
 
@@ -163,6 +164,11 @@ class EndpointService(object):
             for inst, err in plugin().process(self.context):
                 pass
 
+    def reset(self):
+        self.context = Context()
+        self.plugins = Plugins()
+        self.state.clear()
+
         # Append additional metadata to context
         executable = sys.executable
         basename = os.path.basename(executable)
@@ -177,11 +183,6 @@ class EndpointService(object):
                            "pythonVersion": sys.version}.iteritems():
 
             self.context.set_data(key, value)
-
-    def reset(self):
-        self.context = Context()
-        self.plugins = Plugins()
-        self.state.clear()
 
     def process(self, plugin, instance):
         """Process `instance` with `plugin`
@@ -365,11 +366,8 @@ def format_instance(instance, data=None):
 
     return {
         "name": instance.name,
-        "family": instance.data("family"),
-        "niceName": instance.data("name"),
         "children": children,
-        "data": data,
-        "publish": instance.data("publish"),
+        "data": data
     }
 
 
@@ -419,16 +417,24 @@ def format_plugin(plugin, data=None):
 
     """
 
+    assert issubclass(plugin, pyblish.plugin.Plugin)
+
     formatted = {
         "name": plugin.__name__,
-        "version": plugin.version,
-        "category": getattr(plugin, "category", None),
-        "requires": plugin.requires,
-        "order": plugin.order,
-        "optional": plugin.optional,
-        "doc": getattr(plugin, "doc", plugin.__doc__),
-        "hasRepair": hasattr(plugin, "repair_instance"),
-        "hasCompatible": False
+        "data": {
+            "version": plugin.version,
+            "category": getattr(plugin, "category", None),
+            "requires": plugin.requires,
+            "order": plugin.order,
+            "optional": plugin.optional,
+            "doc": getattr(plugin, "doc", plugin.__doc__),
+            "hasRepair": hasattr(plugin, "repair_instance"),
+            "hasCompatible": False,
+            "hosts": [],
+            "families": [],
+            "type": "Unknown",
+            "module": None
+        }
     }
 
     # Make decisions based on provided `data`
@@ -437,22 +443,28 @@ def format_plugin(plugin, data=None):
             if hasattr(plugin, "families"):
                 if pyblish.api.instances_by_plugin(
                         data.get("context"), plugin):
-                    formatted["hasCompatible"] = True
+                    formatted["data"]["hasCompatible"] = True
 
     try:
         # The MRO is as follows: (-1)object, (-2)Plugin, (-3)Selector..
-        formatted["type"] = plugin.__mro__[-3].__name__
+        formatted["data"]["type"] = plugin.__mro__[-3].__name__
     except IndexError:
         # Plug-in was not subclasses from any of the
         # provided superclasses of pyblish.api. This
         # is either a bug or some (very) custom behavior
         # on the users part.
         log.critical("This is a bug")
-        formatted["type"] = "Unknown"
+
+    try:
+        module = sys.modules[plugin.__module__]
+        path = os.path.abspath(module.__file__)
+        formatted["data"]["module"] = path
+    except IndexError:
+        pass
 
     for attr in ("hosts", "families"):
         if hasattr(plugin, attr):
-            formatted[attr] = getattr(plugin, attr)
+            formatted["data"][attr] = getattr(plugin, attr)
 
     return formatted
 
