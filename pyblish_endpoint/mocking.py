@@ -132,8 +132,9 @@ class ValidateFailureMock(pyblish.api.Validator):
     order = pyblish.api.Validator.order + 0.1
 
     def process_instance(self, instance):
-        self.log.info("About to fail..")
-        raise ValueError("ValidateFailureMock was destined to fail")
+        if instance.name == "Richard05":
+            self.log.info("About to fail..")
+            raise ValueError("ValidateFailureMock was destined to fail")
 
 
 @pyblish.api.log

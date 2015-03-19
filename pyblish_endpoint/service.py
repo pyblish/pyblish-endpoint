@@ -23,7 +23,6 @@ import time
 import json
 import getpass
 import logging
-import traceback
 
 import pyblish
 import pyblish.api
@@ -271,27 +270,12 @@ def format_error(error):
 
 
 def format_state(state):
-    try:
-        formatted = {
-            "context": format_context(state["context"]),
-            "plugins": format_plugins(
-                state["plugins"],
-                data={"context": state["context"]})
-        }
-
-    except Exception as e:
-        _, _, exc_tb = sys.exc_info()
-        e.traceback = traceback.extract_tb(exc_tb)[-1]
-
-        message = """{message}
-
-Filename: {fname}
-Line: {line_number}
-Function: {func}
-Exc: {exc}
-""".format(**format_error(e))
-
-        formatted = {"error": message}
+    formatted = {
+        "context": format_context(state["context"]),
+        "plugins": format_plugins(
+            state["plugins"],
+            data={"context": state["context"]})
+    }
 
     return formatted
 
@@ -414,6 +398,7 @@ def format_plugin(plugin, data=None):
         hasRepair: Can the plug-in perform a repair?
         hasCompatible: Does the plug-in have any compatible instances?
         type: Which baseclass does the plug-in stem from? E.g. Validator
+        module: File in which plug-in was defined
 
     """
 
@@ -432,7 +417,7 @@ def format_plugin(plugin, data=None):
             "hasCompatible": False,
             "hosts": [],
             "families": [],
-            "type": "Unknown",
+            "type": None,
             "module": None
         }
     }

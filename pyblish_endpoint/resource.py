@@ -2,7 +2,8 @@
 
 Attributes:
     log: Current logger
-    queue: Cache of requests for long-polling; see Client
+    request_queue: Cache of requests for
+        long-polling; see Client.
 
 """
 
@@ -18,10 +19,11 @@ import flask.ext.restful
 import flask.ext.restful.reqparse
 
 # Local library
+import schema
 import service as service_mod
 
 log = logging.getLogger("endpoint")
-queue = Queue.Queue()
+request_queue = Queue.Queue()
 
 
 class ClientApi(flask.ext.restful.Resource):
@@ -36,12 +38,12 @@ class ClientApi(flask.ext.restful.Resource):
     """
 
     def get(self):
-        dequeue = [str(item) for item in queue.queue]
+        dequeue = [str(item) for item in request_queue.queue]
         return {"ok": True, "queue": dequeue}, 200
 
     def post(self):
         try:
-            message = queue.get(timeout=1)
+            message = request_queue.get(timeout=1)
         except Queue.Empty:
             return {"ok": True, "message": "heartbeat"}, 200
 
@@ -64,15 +66,28 @@ class StateApi(flask.ext.restful.Resource):
         :>jsonarr array context: Context, incl. data and children
         :>jsonarr array plugins: Available plug-ins
 
-        :status 200: Plug-ins returned
+        :status 200: Return state as per schema_state.json
 
         """
 
         state = service_mod.current().state
-        state.compute()
 
-        if "error" in state:
-            return {"ok": False, "message": state["error"]}, 500
+        try:
+            state.compute()
+            schema.validate(state, schema="state")
+
+        except schema.ValidationError as e:
+            return {"ok": False, "message": str(e)}, 500
+
+        except Exception as e:
+            try:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                message = "".join(traceback.format_exception(
+                    exc_type, exc_value, exc_traceback))
+            except:
+                message = str(e)
+
+            return {"ok": False, "message": message}, 500
 
         return {"ok": True, "state": state}, 200
 
@@ -101,6 +116,11 @@ class StateApi(flask.ext.restful.Resource):
 
         try:
             result = service.process(plugin, instance)
+            schema.validate(result, schema="result")
+
+        except schema.ValidationError as e:
+            return {"ok": False, "message": str(e)}, 500
+
         except Exception as e:
             try:
                 exc_type, exc_value, exc_traceback = sys.exc_info()
@@ -139,7 +159,11 @@ class StateApi(flask.ext.restful.Resource):
         else:
             try:
                 changes = json.loads(kwargs["changes"])
+                schema.validate(changes, schema="changes")
                 service.state.update(changes)
+
+            except schema.ValidationError as e:
+                return {"ok": False, "message": str(e)}, 500
 
             except ValueError:
                 message = "Could not de-serialise state: %r" % kwargs

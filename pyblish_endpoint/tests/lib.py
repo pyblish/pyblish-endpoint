@@ -7,8 +7,8 @@ class TestService(service.EndpointService):
     def init(self):
         self.reset()
 
-        context = pyblish.api.Context()
-        plugins = []
+        context = service.Context()
+        plugins = service.Plugins()
 
         for plugin in PLUGINS:
             plugin.families = ["napoleon.animation.cache"]

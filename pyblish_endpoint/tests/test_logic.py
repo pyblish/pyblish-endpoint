@@ -2,9 +2,8 @@ import json
 import logging
 from nose.tools import *
 
-from pyblish_endpoint import server, service
-
 import lib
+from .. import server, service
 
 app, api = server.create_app()
 app.config["TESTING"] = True
