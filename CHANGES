@@ -1,6 +1,11 @@
 Changelog
 =========
 
+Version 1.1.6
+-------------
+
+- Added schemas to client/server communication
+
 Version 1.1.5
 -------------
 

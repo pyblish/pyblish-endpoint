@@ -37,5 +37,5 @@ setup(
     classifiers=classifiers,
     package_data={},
     entry_points={},
-    install_requires=["pyblish>=1.0.12"]
+    install_requires=["pyblish>=1.0.13"]
 )
