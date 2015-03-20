@@ -16,4 +16,4 @@ def request(data):
 
 def emit(message):
     """Emit message to client"""
-    resource.queue.put(message)
+    resource.request_queue.put(message)
