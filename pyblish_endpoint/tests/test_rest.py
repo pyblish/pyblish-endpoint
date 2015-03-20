@@ -1,7 +1,7 @@
 import json
 import logging
 
-from .. import server, service, schema
+from .. import server, service
 from nose.tools import *
 
 import lib
