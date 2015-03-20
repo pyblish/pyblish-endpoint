@@ -10,15 +10,19 @@
 
     "properties": {
         "success": {
+            "description": "Status of processing",
             "type": "boolean"
         },
         "instance": {
-            "type": "string"
+            "description": "Name of processed instance or null if no instance were processed",
+            "type": ["string", "null"]
         },
         "plugin": {
+            "description": "Name of processed plug-in",
             "type": "string"
         },
         "duration": {
+            "description": "Time taken to process",
             "type": "number"
         },
         "error": {
