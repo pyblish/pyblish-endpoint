@@ -1,10 +1,24 @@
 Changelog
 =========
 
+Version 1.1.6
+-------------
+
+- Added schemas to client/server communication
+
+Version 1.1.5
+-------------
+
+- Added heartbeat
+- Implemented State
+- Refactoring
+
 Version 1.1.4
 -------------
 
 - Preloading
+- Overridable order; modify a plug-ins `order` attribute for
+    custom ordering.
 
 Version 1.1.3
 -------------

@@ -20,125 +20,177 @@ to users.
 import os
 import sys
 import time
+import json
 import getpass
 import logging
 
 import pyblish
 import pyblish.api
+import pyblish.plugin
 
 from version import version
 
 log = logging.getLogger("endpoint")
 
 
+class State(dict):
+    """Hold on to information about host state
+
+    State does not modify or interact with host and
+    is therefore thread-safe.
+
+    """
+
+    def __init__(self, service):
+        self.service = service
+
+    def compute(self):
+        """Format current state of Service into JSON-compatible dictionary
+
+        Given that the Service contains an up-to-date view of the host,
+        format this information into a dictionary capable of being passed
+        on to the client.
+
+        Returns:
+            state: JSON-compatible dictionary of current state
+
+        """
+
+        self.clear()
+
+        state = format_state({
+            "plugins": self.service.plugins,
+            "context": self.service.context
+        })
+
+        super(State, self).update(state)
+
+    def update(self, changes):
+        """Parse changes from `changes` and apply to Service
+
+        Given a dictionary of changes, apply changes to
+        corresponding instances and plug-ins.
+
+        Arguments:
+            changes (dict): Dictionary of changes.
+
+        """
+
+        context_changes = changes["context"]
+
+        for name, changes in context_changes.iteritems():
+
+            try:
+                instance = self.service.context[name]
+            except KeyError:
+                log.error(
+                    "Instance from client does "
+                    "not exist on server: %s "
+                    "(available instances: %s)"
+                    % (name, [i.name for i in self.service.context]))
+                continue
+
+            for key, change in changes.iteritems():
+                current_value = instance.data(key)
+
+                if current_value == change["new"]:
+                    continue
+
+                print(
+                    "Changing \"{instance}.{data}\" from "
+                    "\"{from_}\" to \"{to}\"".format(
+                        instance=name,
+                        data=key,
+                        from_=instance.data(key),
+                        to=change["new"]))
+
+                instance.set_data(key, change["new"])
+
+
+class Plugins(list):
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return super(Plugins, self).__getitem__(index)
+
+        for item in self:
+            if item.__name__ == index:
+                return item
+
+        raise KeyError("%s not in list" % index)
+
+
+class Context(pyblish.api.Context):
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return super(Plugins, self).__getitem__(index)
+
+        for item in self:
+            if item.name == index:
+                return item
+
+        raise KeyError("%s not in list" % index)
+
+
 class EndpointService(object):
-    """Abstract baseclass for host interfaces towards endpoint"""
+    """Abstract baseclass for host interfaces towards endpoint
+
+    The Service is responsible for computing and fetching data
+    from a host and is thus *not* thread-safe.
+
+    """
 
     _current = None
 
     def __init__(self):
-        self.context = None
-        self.plugins = None
-        self.processor = None
-        self.state = {
-            "context": [],
-            "plugins": []
-        }
+        self.context = Context()
+        self.plugins = Plugins()
+
+        self.state = State(self)
 
     def init(self):
         """Create context and discover plug-ins and instances"""
+        self.reset()
 
-        context = pyblish.api.Context()
-        plugins = pyblish.api.discover()
+        self.plugins[:] = pyblish.api.discover()
 
-        log.debug("Performing selection..")
-        for plugin in plugins:
+        log.info("Performing selection..")
+        for plugin in self.plugins:
+
             if not issubclass(plugin, pyblish.api.Selector):
                 continue
 
-            log.debug("Processing %s" % plugin)
-            for inst, err in plugin().process(context):
+            log.info("Processing %s" % plugin)
+            for inst, err in plugin().process(self.context):
                 pass
 
-        self.context = context
-        self.plugins = self.sort_plugins(plugins)
-        self.processor = None
+    def reset(self):
+        self.context = Context()
+        self.plugins = Plugins()
+        self.state.clear()
 
-        return True
-
-    def sort_plugins(self, plugins):
-        sorted_plugins = list()
-        for type in (pyblish.api.Selector,
-                     pyblish.api.Validator,
-                     pyblish.api.Extractor,
-                     pyblish.api.Conformer):
-            for plugin in plugins:
-                if issubclass(plugin, type):
-                    sorted_plugins.append(plugin)
-
-        for plugin in plugins:
-            assert plugin in sorted_plugins
-
-        return sorted_plugins
-
-    def system(self):
-        """Confirm connection and return system state"""
-
+        # Append additional metadata to context
         executable = sys.executable
         basename = os.path.basename(executable)
         name, _ = os.path.splitext(basename)
 
-        return {
-            "host": name,
-            "port": int(os.environ.get("ENDPOINT_PORT", -1)),
-            "user": getpass.getuser(),
-            "connectTime": time.time()
-        }
+        for key, value in {"host": name,
+                           "port": int(os.environ.get("ENDPOINT_PORT", -1)),
+                           "user": getpass.getuser(),
+                           "connectTime": time.time(),
+                           "pyblishVersion": pyblish.version,
+                           "endpointVersion": version,
+                           "pythonVersion": sys.version}.iteritems():
 
-    def versions(self):
-        return {
-            "pyblishVersion": pyblish.version,
-            "endpointVersion": version,
-            "pythonVersion": sys.version,
-        }
+            self.context.set_data(key, value)
 
-    def next(self):
-        """Process next plug-in in state"""
+    def process(self, plugin, instance):
+        """Process `instance` with `plugin`
 
-        if self.processor is None:
-            context = pyblish.api.Context()
-            context._data = self.context._data.copy()
-            plugins = list()
+        Arguments:
+            plugin (str): Id of plug-in to process
+            instance (str): Id of instance to process
 
-            plugins_by_name = dict((p.__name__, p) for p in self.plugins)
-            instances_by_name = dict((i.data("name"), i) for i in self.context)
-
-            for plugin in self.state["plugins"]:
-                try:
-                    plugins.append(plugins_by_name[plugin])
-                except KeyError:
-                    log.error("Plugin from client does "
-                              "not exist on server: %s "
-                              "(available plugins: %s"
-                              % (plugin, self.plugins))
-
-            for instance in self.state["context"]:
-                try:
-                    context.add(instances_by_name[instance])
-                except KeyError:
-                    log.error("Instance from client does "
-                              "not exist on server: %s "
-                              "(available instances: %s)"
-                              % (instance, self.context))
-
-            def process():
-                for plugin in plugins:
-                    for instance, error in plugin().process(context):
-                        yield {"plugin": plugin,
-                               "instance": instance,
-                               "error": error}
-
-            self.processor = process()
+        """
 
         records = list()
         handler = MessageHandler(records)
@@ -146,15 +198,36 @@ class EndpointService(object):
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
 
-        try:
-            result = self.processor.next()
-            result["records"] = records
-            return result
-        except StopIteration:
-            self.processor = None
-            return None
-        finally:
-            root_logger.removeHandler(handler)
+        Plugin = self.plugins[plugin]
+
+        __count = 0
+        __time = time.time()
+        success = True
+        o_instance = None
+        formatted_error = None
+        for o_instance, error in Plugin().process(self.context,
+                                                  instances=[instance]):
+            if error is not None:
+                success = False
+                formatted_error = format_error(error)
+
+            __count += 1
+
+        assert (o_instance.name == instance) if o_instance else True
+        assert __count <= 2, "Processed more than two items: %i" % __count
+
+        formatted_records = list()
+        for record in records:
+            formatted_records.append(format_record(record))
+
+        return {
+            "success": success,
+            "plugin": plugin,
+            "instance": instance or "Context",
+            "error": formatted_error,
+            "records": formatted_records,
+            "duration": time.time() - __time
+        }
 
 
 class MessageHandler(logging.Handler):
@@ -166,10 +239,219 @@ class MessageHandler(logging.Handler):
 
     def emit(self, record):
         # Do not record server messages
-        if record.name in ["werkzeug"]:
+        # if record.name in ["werkzeug"]:
+        #     return
+
+        if record.levelno < logging.INFO:
             return
 
         self.records.append(record)
+
+
+def format_record(record):
+    """Serialise LogRecord instance"""
+    return record.__dict__
+
+
+def format_error(error):
+    """Serialise exception"""
+    formatted = {"message": str(error)}
+
+    if hasattr(error, "traceback"):
+        fname, line_no, func, exc = error.traceback
+        formatted.update({
+            "fname": fname,
+            "line_number": line_no,
+            "func": func,
+            "exc": exc
+        })
+
+    return formatted
+
+
+def format_state(state):
+    formatted = {
+        "context": format_context(state["context"]),
+        "plugins": format_plugins(
+            state["plugins"],
+            data={"context": state["context"]})
+    }
+
+    return formatted
+
+
+def format_data(data):
+    """Serialise instance/context data
+
+    Given an arbitrary dictionary of Python object,
+    return a JSON-compatible dictionary.
+
+    Note that all keys are cast to string and that values
+    not compatible with JSON are replaced with "Not supported".
+
+    Arguments:
+        data (dict): Data to serialise
+
+    Returns:
+        data (dict): Serialised data
+
+    """
+
+    formatted = dict()
+
+    for key, value in data.iteritems():
+        try:
+            key = str(key)
+        except:
+            continue
+
+        try:
+            json.dumps(value)
+        except:
+            value = "Not supported"
+
+        formatted[key] = value
+
+    return formatted
+
+
+def format_instance(instance, data=None):
+    """Serialise `instance`
+
+    For children to be visualised and modified,
+    they must provide an appropriate implementation
+    of __str__.
+
+    Data that isn't JSON compatible cannot be
+    visualised nor modified.
+
+    Attributes:
+        name (str): Name of instance
+        niceName (str, optional): Nice name of instance
+        family (str): Name of compatible family
+        children (list, optional): Associated children
+        data (dict, optional): Associated data
+        publish (bool): Whether or not instance should be published
+
+    Returns:
+        Dictionary of JSON-compatible instance
+
+    """
+
+    children = list()
+    for child in instance:
+        try:
+            json.dumps(child)
+        except:
+            child = "Invalid"
+        children.append(child)
+
+    data = format_data(instance._data)
+
+    return {
+        "name": instance.name,
+        "children": children,
+        "data": data
+    }
+
+
+def format_context(context, data=None):
+    formatted = []
+
+    for instance in context:
+        formatted_instance = format_instance(instance, data)
+        formatted.append(formatted_instance)
+
+    return {
+        "data": format_data(context._data),
+        "children": formatted
+    }
+
+
+def format_plugins(plugins, data=None):
+    """Serialise multiple plug-ins
+
+    Returns:
+        List of JSON-compatible plug-ins
+
+    """
+
+    formatted = []
+    for plugin in plugins:
+        formatted_plugin = format_plugin(plugin, data=data)
+        formatted.append(formatted_plugin)
+
+    return formatted
+
+
+def format_plugin(plugin, data=None):
+    """Serialise `plugin`
+
+    Attributes:
+        name: Name of Python class
+        version: Plug-in version
+        category: Optional category
+        requires: Plug-in requirements
+        order: Plug-in order
+        optional: Is the plug-in optional?
+        doc: The plug-in documentation
+        hasRepair: Can the plug-in perform a repair?
+        hasCompatible: Does the plug-in have any compatible instances?
+        type: Which baseclass does the plug-in stem from? E.g. Validator
+        module: File in which plug-in was defined
+
+    """
+
+    assert issubclass(plugin, pyblish.plugin.Plugin)
+
+    formatted = {
+        "name": plugin.__name__,
+        "data": {
+            "version": plugin.version,
+            "category": getattr(plugin, "category", None),
+            "requires": plugin.requires,
+            "order": plugin.order,
+            "optional": plugin.optional,
+            "doc": getattr(plugin, "doc", plugin.__doc__),
+            "hasRepair": hasattr(plugin, "repair_instance"),
+            "hasCompatible": False,
+            "hosts": [],
+            "families": [],
+            "type": None,
+            "module": None
+        }
+    }
+
+    # Make decisions based on provided `data`
+    if data:
+        if data.get("context"):
+            if hasattr(plugin, "families"):
+                if pyblish.api.instances_by_plugin(
+                        data.get("context"), plugin):
+                    formatted["data"]["hasCompatible"] = True
+
+    try:
+        # The MRO is as follows: (-1)object, (-2)Plugin, (-3)Selector..
+        formatted["data"]["type"] = plugin.__mro__[-3].__name__
+    except IndexError:
+        # Plug-in was not subclasses from any of the
+        # provided superclasses of pyblish.api. This
+        # is either a bug or some (very) custom behavior
+        # on the users part.
+        log.critical("This is a bug")
+
+    try:
+        module = sys.modules[plugin.__module__]
+        path = os.path.abspath(module.__file__)
+        formatted["data"]["module"] = path
+    except IndexError:
+        pass
+
+    for attr in ("hosts", "families"):
+        if hasattr(plugin, attr):
+            formatted["data"][attr] = getattr(plugin, attr)
+
+    return formatted
 
 
 def current():
@@ -177,7 +459,7 @@ def current():
     return EndpointService._current
 
 
-def register_service(service, force=False):
+def register_service(service, force=True):
     """Register service
 
     The service will be used by the endpoint for host communication

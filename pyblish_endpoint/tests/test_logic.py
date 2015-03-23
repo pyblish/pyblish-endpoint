@@ -2,7 +2,8 @@ import json
 import logging
 from nose.tools import *
 
-from pyblish_endpoint import server, service, mocking
+import lib
+from .. import server, service
 
 app, api = server.create_app()
 app.config["TESTING"] = True
@@ -12,7 +13,7 @@ client.testing = True
 log = logging.getLogger("endpoint")
 log.setLevel(logging.WARNING)
 
-service.register_service(mocking.MockService, force=True)
+service.register_service(lib.TestService, force=True)
 
 
 def setup():

@@ -5,9 +5,15 @@ has signalled that it is receiving them.
 
 """
 
+import warnings
 import resource
 
 
 def request(data):
-    """Send request to client"""
-    resource.queue.put(data)
+    warnings.warn("pyblish_endpoint.client.request() deprecated; use emit()")
+    emit(data)
+
+
+def emit(message):
+    """Emit message to client"""
+    resource.request_queue.put(message)

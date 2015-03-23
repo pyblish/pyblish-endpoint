@@ -30,51 +30,46 @@ class MockService(service.EndpointService):
     PERFORMANCE = NATIVE
 
     def init(self):
-        self.plugins = []
-        for plugin, superclass in (
-                ["ExtractAsMa", pyblish.api.Extractor],
-                ["ConformAsset", pyblish.api.Conformer]):
-            obj = type(plugin, (superclass,), {})
+        self.reset()
 
-            obj.families = ["napoleon.animation.cache"]
-            if plugin == "ConformAsset":
-                obj.families = ["napoleon.asset.rig"]
+        for plugin in PLUGINS:
+            plugin.families = ["napoleon.animation.cache"]
 
-            obj.hosts = ["python", "maya"]
-            self.plugins.append(obj)
+            if plugin.__name__ == "ConformAsset":
+                plugin.families = ["napoleon.asset.rig"]
 
-        fake_instances = ["Peter01", "Richard05", "Steven11"]
-        context = pyblish.api.Context()
-        for name in fake_instances[:self.NUM_INSTANCES]:
-            instance = context.create_instance(name=name)
+            if plugin == ValidateIsIncompatible:
+                plugin.families = ["napoleon.incompatible"]
+
+            plugin.hosts = ["python"]
+
+            self.plugins.append(plugin)
+
+        for name in INSTANCES:
+            instance = self.context.create_instance(name=name)
 
             instance._data = {
+                "publish": True,
+                "family": "napoleon.animation.cache",
                 "identifier": "napoleon.instance",
                 "minWidth": 800,
                 "assetSource": "/server/assets/Peter",
                 "destination": "/server/published/assets",
             }
 
-            instance.set_data("publish", True)
-
             if name == "Peter01":
                 instance.set_data("publish", False)
                 instance.set_data("family", "napoleon.asset.rig")
-            else:
-                instance.set_data("family", "napoleon.animation.cache")
+            # else:
+            #     instance.set_data("family", "napoleon.animation.cache")
 
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
-        self.plugins.append(ValidateFailureMock)
-        self.plugins.append(ValidateNamespace)
-        self.plugins = self.sort_plugins(self.plugins)
+        pyblish.api.sort_plugins(self.plugins)
 
-        self.context = context
-        self.processor = None
-
-    def next(self):
-        result = super(MockService, self).next()
+    def process(self, *args, **kwargs):
+        result = super(MockService, self).process(*args, **kwargs)
         self.sleep()
         return result
 
@@ -108,23 +103,57 @@ class MockService(service.EndpointService):
             log.info("Completed successfully!")
 
 
+#
+# Test plug-ins
+#
+
+ExtractAsMa = type("ExtractAsMa", (pyblish.api.Extractor,), {})
+ConformAsset = type("ConformAsset", (pyblish.api.Conformer,), {})
+
+
 @pyblish.api.log
 class ValidateNamespace(pyblish.api.Validator):
+    """Validate the namespaces, or else"""
     families = ["napoleon.animation.cache"]
     hosts = ["*"]
     version = (0, 0, 1)
 
     def process_instance(self, instance):
-        self.log.info("Validating namespace..")
-        self.log.info("Completed validating namespace!")
+        self.log.info("Validating the namespace of %s" % instance.data("name"))
 
 
 @pyblish.api.log
 class ValidateFailureMock(pyblish.api.Validator):
+    """Plug-in that always fails"""
     families = ["*"]
     hosts = ["*"]
     version = (0, 0, 1)
     optional = True
+    order = pyblish.api.Validator.order + 0.1
 
     def process_instance(self, instance):
-        raise ValueError("Instance failed")
+        if instance.name == "Richard05":
+            self.log.info("About to fail..")
+            raise ValueError("ValidateFailureMock was destined to fail")
+
+
+@pyblish.api.log
+class ValidateIsIncompatible(pyblish.api.Validator):
+    """This plug-in should never appear.."""
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+
+INSTANCES = ["Peter01",
+             "Richard05",
+             "Steven11",
+             "Piraya12",
+             "Marcus"]
+PLUGINS = [
+    ExtractAsMa,
+    ConformAsset,
+    ValidateFailureMock,
+    ValidateNamespace,
+    ValidateIsIncompatible
+]
