@@ -204,7 +204,10 @@ class ValidateContext(pyblish.api.Validator):
 class ValidateContextFailure(pyblish.api.Validator):
     def process_context(self, context):
         self.log.info("About to fail..")
-        raise pyblish.api.ValidationError("I was programmed to fail")
+        raise pyblish.api.ValidationError("""I was programmed to fail
+
+The reason I failed was because the sun was not aligned with the tides,
+and the moon is gray; not yellow. Try again when the moon is yellow.""")
 
 
 @pyblish.api.log
@@ -213,7 +216,7 @@ class Validator1(pyblish.api.Validator):
     order = pyblish.api.Validator.order + 0.1
 
     def process_instance(self, instance):
-        self.log.info("I go first..")
+        pass
 
 
 @pyblish.api.log
@@ -221,7 +224,7 @@ class Validator2(pyblish.api.Validator):
     order = pyblish.api.Validator.order + 0.2
 
     def process_instance(self, instance):
-        self.log.info("I go second..")
+        pass
 
 
 @pyblish.api.log
@@ -229,7 +232,7 @@ class Validator3(pyblish.api.Validator):
     order = pyblish.api.Validator.order + 0.3
 
     def process_instance(self, instance):
-        self.log.info("I go last..")
+        pass
 
 
 @pyblish.api.log
