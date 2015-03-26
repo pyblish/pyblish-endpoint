@@ -260,7 +260,31 @@ class MessageHandler(logging.Handler):
 
 
 def format_record(record):
-    """Serialise LogRecord instance"""
+    """Serialise LogRecord instance
+
+    Data:
+        threadName
+        name
+        thread
+        created
+        process
+        processName
+        args
+        module
+        filename
+        levelno
+        exc_text
+        pathname
+        lineno
+        msg
+        exc_info
+        funcName
+        relativeCreated
+        levelname
+        msecs
+
+    """
+
     return record.__dict__
 
 
