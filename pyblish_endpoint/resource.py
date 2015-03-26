@@ -105,7 +105,7 @@ class StateApi(flask.ext.restful.Resource):
         """
         parser = flask.ext.restful.reqparse.RequestParser()
         parser.add_argument("plugin", required=True, type=str)
-        parser.add_argument("instance", required=True, type=str)
+        parser.add_argument("instance", type=str)
 
         kwargs = parser.parse_args()
 

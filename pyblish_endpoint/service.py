@@ -23,6 +23,7 @@ import time
 import json
 import getpass
 import logging
+import traceback
 
 import pyblish
 import pyblish.api
@@ -150,18 +151,7 @@ class EndpointService(object):
     def init(self):
         """Create context and discover plug-ins and instances"""
         self.reset()
-
         self.plugins[:] = pyblish.api.discover()
-
-        log.info("Performing selection..")
-        for plugin in self.plugins:
-
-            if not issubclass(plugin, pyblish.api.Selector):
-                continue
-
-            log.info("Processing %s" % plugin)
-            for inst, err in plugin().process(self.context):
-                pass
 
     def reset(self):
         self.context = Context()
@@ -183,12 +173,13 @@ class EndpointService(object):
 
             self.context.set_data(key, value)
 
-    def process(self, plugin, instance):
-        """Process `instance` with `plugin`
+    def process(self, plugin_id, instance_id=None):
+        """Process `instance_id` with `plugin_id`
 
         Arguments:
-            plugin (str): Id of plug-in to process
-            instance (str): Id of instance to process
+            plugin_id (str): Id of plug-in to process
+            instance_id (str, optional): Id of instance_id to process,
+                if not passed Context is processed.
 
         """
 
@@ -198,23 +189,43 @@ class EndpointService(object):
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
 
-        Plugin = self.plugins[plugin]
+        Plugin = self.plugins[plugin_id]
 
-        __count = 0
         __time = time.time()
+
         success = True
-        o_instance = None
         formatted_error = None
-        for o_instance, error in Plugin().process(self.context,
-                                                  instances=[instance]):
-            if error is not None:
+
+        if instance_id is None:
+            try:
+                Plugin().process_context(self.context)
+            except Exception as error:
+                try:
+                    _, _, exc_tb = sys.exc_info()
+                    error.traceback = traceback.extract_tb(
+                        exc_tb)[-1]
+                except:
+                    pass
+
                 success = False
                 formatted_error = format_error(error)
 
-            __count += 1
+        else:
 
-        assert (o_instance.name == instance) if o_instance else True
-        assert __count <= 2, "Processed more than two items: %i" % __count
+            instance = self.context[instance_id]
+
+            try:
+                Plugin().process_instance(instance)
+            except Exception as error:
+                try:
+                    _, _, exc_tb = sys.exc_info()
+                    error.traceback = traceback.extract_tb(
+                        exc_tb)[-1]
+                except:
+                    pass
+
+                success = False
+                formatted_error = format_error(error)
 
         formatted_records = list()
         for record in records:
@@ -222,8 +233,8 @@ class EndpointService(object):
 
         return {
             "success": success,
-            "plugin": plugin,
-            "instance": instance or "Context",
+            "plugin": plugin_id,
+            "instance": instance_id or "Context",
             "error": formatted_error,
             "records": formatted_records,
             "duration": time.time() - __time
@@ -272,9 +283,7 @@ def format_error(error):
 def format_state(state):
     formatted = {
         "context": format_context(state["context"]),
-        "plugins": format_plugins(
-            state["plugins"],
-            data={"context": state["context"]})
+        "plugins": format_plugins(state["plugins"])
     }
 
     return formatted
@@ -369,7 +378,7 @@ def format_context(context, data=None):
 
 
 def format_plugins(plugins, data=None):
-    """Serialise multiple plug-ins
+    """Serialise multiple plug-in
 
     Returns:
         List of JSON-compatible plug-ins
@@ -399,10 +408,14 @@ def format_plugin(plugin, data=None):
         hasCompatible: Does the plug-in have any compatible instances?
         type: Which baseclass does the plug-in stem from? E.g. Validator
         module: File in which plug-in was defined
+        canProcessContext: Does it process the Context?
+        canProcessInstance: Does it process the Instance(s)?
 
     """
 
     assert issubclass(plugin, pyblish.plugin.Plugin)
+
+    docstring = getattr(plugin, "doc", plugin.__doc__)
 
     formatted = {
         "name": plugin.__name__,
@@ -412,23 +425,17 @@ def format_plugin(plugin, data=None):
             "requires": plugin.requires,
             "order": plugin.order,
             "optional": plugin.optional,
-            "doc": getattr(plugin, "doc", plugin.__doc__),
+            "doc": docstring,
             "hasRepair": hasattr(plugin, "repair_instance"),
             "hasCompatible": False,
             "hosts": [],
             "families": [],
             "type": None,
-            "module": None
+            "module": None,
+            "canProcessContext": False,
+            "canProcessInstance": False,
         }
     }
-
-    # Make decisions based on provided `data`
-    if data:
-        if data.get("context"):
-            if hasattr(plugin, "families"):
-                if pyblish.api.instances_by_plugin(
-                        data.get("context"), plugin):
-                    formatted["data"]["hasCompatible"] = True
 
     try:
         # The MRO is as follows: (-1)object, (-2)Plugin, (-3)Selector..
@@ -450,6 +457,14 @@ def format_plugin(plugin, data=None):
     for attr in ("hosts", "families"):
         if hasattr(plugin, attr):
             formatted["data"][attr] = getattr(plugin, attr)
+
+    Superclass = pyblish.plugin.Plugin
+
+    if Superclass.process_context != plugin.process_context:
+        formatted["data"]["canProcessContext"] = True
+
+    if Superclass.process_instance != plugin.process_instance:
+        formatted["data"]["canProcessInstance"] = True
 
     return formatted
 
