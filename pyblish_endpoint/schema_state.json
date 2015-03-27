@@ -100,6 +100,14 @@
                         },
                         "module": {
                             "type": "string"
+                        },
+                        "canProcessContext": {
+                            "description": "Whether or not the plug-in has implemented Context processing",
+                            "type": "boolean"
+                        },
+                        "canProcessInstance": {
+                            "description": "Whether or not the plug-in has implemented Instance processing",
+                            "type": "boolean"
                         }
                     }
                 }

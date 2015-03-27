@@ -98,14 +98,15 @@ class StateApi(flask.ext.restful.Resource):
         :<json string instance: Instance to process
 
         :>jsonarr string ok: Status message
+        :>jsonarr Result result: Result dictionary; see schema for Result
 
         :status 200: Advance ok
-        :status 404: Nothing left to advance to
+        :status 400: Invalid arguments specified
 
         """
         parser = flask.ext.restful.reqparse.RequestParser()
         parser.add_argument("plugin", required=True, type=str)
-        parser.add_argument("instance", required=True, type=str)
+        parser.add_argument("instance", type=str)
 
         kwargs = parser.parse_args()
 
@@ -141,8 +142,10 @@ class StateApi(flask.ext.restful.Resource):
         :<jsonarr array state: Changes from client
         :>jsonarr array state: Applied changes
         :>jsonarr string message: Error message when status == 500
+        :>jsonarr Changes changes: Changes dictionary; see schema for Changes
 
         :status 200: State returned
+        :status 400: Invalid arguments specified
         :status 500: Internal error; see `message` for information.
 
         """
