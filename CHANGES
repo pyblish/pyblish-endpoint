@@ -5,7 +5,6 @@ Version 1.1.7
 -------------
 
 - Process context in isolation using PUT
-- Formatting docstring to remove tabs, newlines and other whitespaces, whilst preserving paragraphs.
 
 Version 1.1.6
 -------------
