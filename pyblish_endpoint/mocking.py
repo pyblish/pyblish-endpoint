@@ -202,6 +202,8 @@ class ValidateContext(pyblish.api.Validator):
 
 @pyblish.api.log
 class ValidateContextFailure(pyblish.api.Validator):
+    optional = True
+
     def process_context(self, context):
         self.log.info("About to fail..")
         raise pyblish.api.ValidationError("""I was programmed to fail
@@ -272,6 +274,42 @@ class ValidateIsIncompatible(pyblish.api.Validator):
 
 
 @pyblish.api.log
+class ValidateWithRepair(pyblish.api.Validator):
+    """A validator with repair functionality"""
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+    def process_instance(self, instance):
+        if instance.name == "Richard05":
+            raise pyblish.api.ValidationError(
+                "%s is invalid, try repairing it!" % instance.name)
+
+    def repair_instance(self, instance):
+        self.log.info("Attempting to repair..")
+        self.log.info("Success!")
+
+
+@pyblish.api.log
+class ValidateWithRepairFailure(pyblish.api.Validator):
+    """A validator with repair functionality that fails"""
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+    def process_instance(self, instance):
+        if instance.name == "Richard05":
+            raise pyblish.api.ValidationError(
+                "%s is invalid, try repairing it!" % instance.name)
+
+    def repair_instance(self, instance):
+        self.log.info("Attempting to repair..")
+
+        if instance.name == "Richard05":
+            raise pyblish.api.ValidationError("Could not repair due to X")
+
+
+@pyblish.api.log
 class ExtractAsMa(pyblish.api.Extractor):
     """Extract contents of each instance into .ma
 
@@ -319,5 +357,7 @@ PLUGINS = [
     ValidateContextFailure,
     Validator1,
     Validator2,
-    Validator3
+    Validator3,
+    ValidateWithRepair,
+    ValidateWithRepairFailure
 ]
