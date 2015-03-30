@@ -245,17 +245,9 @@ class MessageHandler(logging.Handler):
     def __init__(self, records, *args, **kwargs):
         # Not using super(), for compatibility with Python 2.6
         logging.Handler.__init__(self, *args, **kwargs)
-
         self.records = records
 
     def emit(self, record):
-        # Do not record server messages
-        # if record.name in ["werkzeug"]:
-        #     return
-
-        if record.levelno < logging.INFO:
-            return
-
         self.records.append(record)
 
 
