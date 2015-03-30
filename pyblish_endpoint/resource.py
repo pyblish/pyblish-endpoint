@@ -102,22 +102,38 @@ class StateApi(flask.ext.restful.Resource):
 
         :status 200: Advance ok
         :status 400: Invalid arguments specified
+        :status 500: Server error
 
         """
         parser = flask.ext.restful.reqparse.RequestParser()
         parser.add_argument("plugin", required=True, type=str)
         parser.add_argument("instance", type=str)
+        parser.add_argument("mode", type=str, default="process")
 
         kwargs = parser.parse_args()
 
         plugin = kwargs["plugin"]
         instance = kwargs["instance"]
+        mode = kwargs["mode"]
 
         service = service_mod.current()
 
         try:
-            result = service.process(plugin, instance)
-            schema.validate(result, schema="result")
+            if mode == "process":
+                log.debug("Processing..")
+                result = service.process(plugin, instance)
+                schema.validate(result, schema="result")
+
+            elif mode == "repair":
+                log.debug("Repairing..")
+                result = service.repair(plugin, instance)
+                schema.validate(result, schema="result")
+
+            else:
+                return {
+                    "ok": False,
+                    "message": "mode %s unrecognised" % mode
+                }, 400
 
         except schema.ValidationError as e:
             return {"ok": False, "message": str(e)}, 500
