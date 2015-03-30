@@ -240,6 +240,72 @@ class EndpointService(object):
             "duration": time.time() - __time
         }
 
+    def repair(self, plugin_id, instance_id):
+        """Process `instance_id` with `plugin_id`
+
+        Arguments:
+            plugin_id (str): Id of plug-in to process
+            instance_id (str, optional): Id of instance_id to process,
+                if not passed Context is processed.
+
+        """
+
+        records = list()
+        handler = MessageHandler(records)
+
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
+
+        Plugin = self.plugins[plugin_id]
+
+        __time = time.time()
+
+        success = True
+        formatted_error = None
+
+        if instance_id is None:
+            try:
+                Plugin().repair_context(self.context)
+            except Exception as error:
+                try:
+                    _, _, exc_tb = sys.exc_info()
+                    error.traceback = traceback.extract_tb(
+                        exc_tb)[-1]
+                except:
+                    pass
+
+                success = False
+                formatted_error = format_error(error)
+
+        else:
+            instance = self.context[instance_id]
+
+            try:
+                Plugin().repair_instance(instance)
+            except Exception as error:
+                try:
+                    _, _, exc_tb = sys.exc_info()
+                    error.traceback = traceback.extract_tb(
+                        exc_tb)[-1]
+                except:
+                    pass
+
+                success = False
+                formatted_error = format_error(error)
+
+        formatted_records = list()
+        for record in records:
+            formatted_records.append(format_record(record))
+
+        return {
+            "success": success,
+            "plugin": plugin_id,
+            "instance": instance_id or "Context",
+            "error": formatted_error,
+            "records": formatted_records,
+            "duration": time.time() - __time
+        }
+
 
 class MessageHandler(logging.Handler):
     def __init__(self, records, *args, **kwargs):
@@ -307,7 +373,7 @@ def format_state(state):
 
 def format_data(data):
     """Serialise instance/context data
-
+ 
     Given an arbitrary dictionary of Python object,
     return a JSON-compatible dictionary.
 
@@ -442,7 +508,7 @@ def format_plugin(plugin, data=None):
             "order": plugin.order,
             "optional": plugin.optional,
             "doc": docstring,
-            "hasRepair": hasattr(plugin, "repair_instance"),
+            "hasRepair": False,
             "hasCompatible": False,
             "hosts": [],
             "families": [],
@@ -450,6 +516,8 @@ def format_plugin(plugin, data=None):
             "module": None,
             "canProcessContext": False,
             "canProcessInstance": False,
+            "canRepairInstance": False,
+            "canRepairContext": False
         }
     }
 
@@ -481,6 +549,22 @@ def format_plugin(plugin, data=None):
 
     if Superclass.process_instance != plugin.process_instance:
         formatted["data"]["canProcessInstance"] = True
+
+    # TODO(marcus): As of Pyblish 1.0.15, this try/except block
+    # is no longer necessary.
+    try:
+        if Superclass.repair_instance != plugin.repair_instance:
+            formatted["data"]["canRepairInstance"] = True
+            formatted["data"]["hasRepair"] = True
+    except AttributeError:
+        pass
+
+    try:
+        if Superclass.repair_context != plugin.repair_context:
+            formatted["data"]["canRepairContext"] = True
+            formatted["data"]["hasRepair"] = True
+    except AttributeError:
+        pass
 
     return formatted
 
