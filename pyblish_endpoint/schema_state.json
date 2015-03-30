@@ -108,6 +108,14 @@
                         "canProcessInstance": {
                             "description": "Whether or not the plug-in has implemented Instance processing",
                             "type": "boolean"
+                        },
+                        "canRepairInstance": {
+                            "description": "Whether or not the plug-in has implemented Instance repair",
+                            "type": "boolean"
+                        },
+                        "canRepairContext": {
+                            "description": "Whether or not the plug-in has implemented Instance repair",
+                            "type": "boolean"
                         }
                     }
                 }
