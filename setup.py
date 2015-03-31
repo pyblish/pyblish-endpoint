@@ -35,7 +35,10 @@ setup(
     packages=find_packages(),
     zip_safe=False,
     classifiers=classifiers,
-    package_data={},
+    package_data={
+        "pyblish_endpoint": ["*.json", "schemas/*.json",
+                             "vendor/jsonschema/schemas/*.json"]
+    },
     entry_points={},
     install_requires=["pyblish>=1.0.13"]
 )
