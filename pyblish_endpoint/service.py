@@ -21,6 +21,7 @@ import os
 import sys
 import time
 import json
+import copy
 import getpass
 import logging
 import traceback
@@ -59,10 +60,32 @@ class State(dict):
 
         self.clear()
 
-        state = format_state({
-            "plugins": self.service.plugins,
-            "context": self.service.context
-        })
+        plugins = self.service.plugins
+        context = self.service.context
+
+        state = format_state({"plugins": plugins,
+                              "context": context})
+
+        # Bridge instances and plug-ins
+        for plugin in state["plugins"]:
+            compatible = pyblish.api.instances_by_plugin(
+                instances=context,
+                plugin=plugins[plugin["name"]])
+
+            compatible = [str(i) for i in compatible]
+            plugin["data"]["compatibleInstances"] = compatible
+
+        for instance in state["context"]["children"]:
+            compatible = list()
+            family = instance["data"].get("family")
+
+            if family:
+                compatible = pyblish.api.plugins_by_family(
+                    plugins=plugins,
+                    family=family)
+                compatible = [getattr(i, "id") for i in compatible]
+
+            instance["data"]["compatiblePlugins"] = compatible
 
         super(State, self).update(state)
 
@@ -174,73 +197,12 @@ class EndpointService(object):
             self.context.set_data(key, value)
 
     def process(self, plugin_id, instance_id=None):
-        """Process `instance_id` with `plugin_id`
-
-        Arguments:
-            plugin_id (str): Id of plug-in to process
-            instance_id (str, optional): Id of instance_id to process,
-                if not passed Context is processed.
-
-        """
-
-        records = list()
-        handler = MessageHandler(records)
-
-        root_logger = logging.getLogger()
-        root_logger.addHandler(handler)
-
-        Plugin = self.plugins[plugin_id]
-
-        __time = time.time()
-
-        success = True
-        formatted_error = None
-
-        if instance_id is None:
-            try:
-                Plugin().process_context(self.context)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
-
-        else:
-
-            instance = self.context[instance_id]
-
-            try:
-                Plugin().process_instance(instance)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
-
-        formatted_records = list()
-        for record in records:
-            formatted_records.append(format_record(record))
-
-        return {
-            "success": success,
-            "plugin": plugin_id,
-            "instance": instance_id or "Context",
-            "error": formatted_error,
-            "records": formatted_records,
-            "duration": time.time() - __time
-        }
+        return self._process_pair("process", plugin_id, instance_id)
 
     def repair(self, plugin_id, instance_id):
+        return self._process_pair("repair", plugin_id, instance_id)
+
+    def _process_pair(self, mode, plugin_id, instance_id=None):
         """Process `instance_id` with `plugin_id`
 
         Arguments:
@@ -250,13 +212,29 @@ class EndpointService(object):
 
         """
 
+        try:
+            Plugin = self.plugins[plugin_id]
+        except KeyError as e:
+            extract_traceback(e)
+
+            result = {
+                "success": False,
+                "plugin": plugin_id,
+                "instance": instance_id or "Context",
+                "error": format_error(e),
+                "records": list(),
+                "duration": 0
+            }
+
+            self.store_results_in_context(result)
+
+            return result
+
         records = list()
         handler = MessageHandler(records)
 
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
-
-        Plugin = self.plugins[plugin_id]
 
         __time = time.time()
 
@@ -264,40 +242,27 @@ class EndpointService(object):
         formatted_error = None
 
         if instance_id is None:
-            try:
-                Plugin().repair_context(self.context)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
-
+            item = self.context
+            processor = getattr(Plugin(), "%s_context" % mode)
         else:
-            instance = self.context[instance_id]
+            item = self.context[instance_id]
+            processor = getattr(Plugin(), "%s_instance" % mode)
 
-            try:
-                Plugin().repair_instance(instance)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
+        try:
+            processor(item)
+        except Exception as error:
+            success = False
+            extract_traceback(error)
+            formatted_error = format_error(error)
 
         formatted_records = list()
         for record in records:
             formatted_records.append(format_record(record))
 
-        return {
+        # Restore balance to the world
+        root_logger.removeHandler(handler)
+
+        result = {
             "success": success,
             "plugin": plugin_id,
             "instance": instance_id or "Context",
@@ -305,6 +270,19 @@ class EndpointService(object):
             "records": formatted_records,
             "duration": time.time() - __time
         }
+
+        self.store_results_in_context(result)
+
+        return result
+
+    def store_results_in_context(self, result):
+        results = self.context.data("results")
+        if results is None:
+            results = list()
+            self.context.set_data("results", results)
+
+        result = copy.deepcopy(result)
+        results.append(result)
 
 
 class MessageHandler(logging.Handler):
@@ -315,6 +293,18 @@ class MessageHandler(logging.Handler):
 
     def emit(self, record):
         self.records.append(record)
+
+
+def extract_traceback(exception):
+    try:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        exception.traceback = traceback.extract_tb(exc_traceback)[-1]
+
+    except:
+        pass
+
+    finally:
+        del(exc_type, exc_value, exc_traceback)
 
 
 def format_record(record):
@@ -343,7 +333,12 @@ def format_record(record):
 
     """
 
-    return record.__dict__
+    record = record.__dict__
+
+    # Humanise output and conform to Exceptions
+    record["message"] = record.pop("msg")
+
+    return record
 
 
 def format_error(error):
@@ -363,6 +358,14 @@ def format_error(error):
 
 
 def format_state(state):
+    """Bridge context with plug-ins
+
+    Attribute:
+        - compatibleInstances
+        - compatiblePlugins
+
+    """
+
     formatted = {
         "context": format_context(state["context"]),
         "plugins": format_plugins(state["plugins"])
@@ -373,7 +376,7 @@ def format_state(state):
 
 def format_data(data):
     """Serialise instance/context data
- 
+
     Given an arbitrary dictionary of Python object,
     return a JSON-compatible dictionary.
 

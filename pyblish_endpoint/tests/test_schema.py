@@ -1,7 +1,22 @@
+import os
 from nose.tools import *
 
 from .. import schema
 from .. import service
+
+
+def test_schema_format():
+    """All schemas load fine"""
+    schemas = list()
+    for s in os.listdir(os.path.dirname(schema.__file__)):
+        if s.startswith("schema_") and s.endswith(".json"):
+            s = s.split("schema_", 1)[-1]
+            s = s.rsplit(".json", 1)[0]
+            schemas.append(s)
+
+    for s in schemas:
+        print "Loading %s" % s
+        schema.load(s)
 
 
 def test_state_alignment():

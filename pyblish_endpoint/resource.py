@@ -26,6 +26,18 @@ log = logging.getLogger("endpoint")
 request_queue = Queue.Queue()
 
 
+class HelloApi(flask.ext.restful.Resource):
+    """Hello API
+
+    Clients may send a "hello" to servers in order
+    to find out whether they are present or not.
+
+    """
+
+    def get(self):
+        return {"ok": True, "message": "hello"}, 200
+
+
 class ClientApi(flask.ext.restful.Resource):
     """Client API
 
@@ -80,12 +92,7 @@ class StateApi(flask.ext.restful.Resource):
             return {"ok": False, "message": str(e)}, 500
 
         except Exception as e:
-            try:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                message = "".join(traceback.format_exception(
-                    exc_type, exc_value, exc_traceback))
-            except:
-                message = str(e)
+            message = format_exception() or str(e)
 
             return {"ok": False, "message": message}, 500
 
@@ -100,11 +107,12 @@ class StateApi(flask.ext.restful.Resource):
         :>jsonarr string ok: Status message
         :>jsonarr Result result: Result dictionary; see schema for Result
 
-        :status 200: Advance ok
+        :status 200: Processing ok
         :status 400: Invalid arguments specified
         :status 500: Server error
 
         """
+
         parser = flask.ext.restful.reqparse.RequestParser()
         parser.add_argument("plugin", required=True, type=str)
         parser.add_argument("instance", type=str)
@@ -139,12 +147,7 @@ class StateApi(flask.ext.restful.Resource):
             return {"ok": False, "message": str(e)}, 500
 
         except Exception as e:
-            try:
-                exc_type, exc_value, exc_traceback = sys.exc_info()
-                message = "".join(traceback.format_exception(
-                    exc_type, exc_value, exc_traceback))
-            except:
-                message = str(e)
+            message = format_exception() or str(e)
             return {"ok": False, "message": message}, 500
 
         return {"ok": True, "result": result}, 200
@@ -190,13 +193,7 @@ class StateApi(flask.ext.restful.Resource):
                 return {"ok": False, "message": message}, 500
 
             except Exception as e:
-                try:
-                    exc_type, exc_value, exc_traceback = sys.exc_info()
-                    message = "".join(traceback.format_exception(
-                        exc_type, exc_value, exc_traceback))
-                except:
-                    message = str(e)
-
+                message = format_exception() or str(e)
                 log.error(message)
                 return {"ok": False, "message": str(message)}, 500
 
@@ -223,3 +220,16 @@ class StateApi(flask.ext.restful.Resource):
             return {"ok": False, "message": str(e)}, 500
 
         return {"ok": True}, 200
+
+
+def format_exception():
+    try:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        message = "".join(traceback.format_exception(
+            exc_type, exc_value, exc_traceback))
+    except:
+        message = None
+    finally:
+        del(exc_type, exc_value, exc_traceback)
+
+    return message

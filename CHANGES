@@ -4,7 +4,10 @@ Changelog
 Version 1.1.8
 -------------
 
+- Added /hello API for discovering available Endpoints
 - Including DEBUG log records
+- Including records and exceptions in Context
+- Including Compatibility information in plug-ins and instances
 
 Version 1.1.7
 -------------

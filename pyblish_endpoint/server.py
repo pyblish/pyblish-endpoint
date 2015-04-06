@@ -20,11 +20,13 @@ prefix = "/pyblish/v1"
 resource_map = {
     "/state": resource.StateApi,
     "/client": resource.ClientApi,
+    "/hello": resource.HelloApi,
 }
 
 endpoint_map = {
     "/state":  "state",
     "/client": "client",
+    "/hello": "hello",
 }
 
 current_server = None
@@ -86,7 +88,7 @@ def start_async_production_server(port, service):
     current_server_thread = t
 
 
-def start_debug_server(port, **kwargs):
+def start_debug_server(port, delay=0.5, **kwargs):
     """Start debug server
 
     This server uses a mocked up service to fake the actual
@@ -109,7 +111,7 @@ def start_debug_server(port, **kwargs):
     os.environ["ENDPOINT_PORT"] = str(port)
 
     Service = mocking.MockService
-    Service.SLEEP_DURATION = .5
+    Service.SLEEP_DURATION = delay
     Service.PERFORMANCE = Service.FAST
     service_mod.register_service(Service)
 
@@ -131,6 +133,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=6000, help="Port to use")
+    parser.add_argument("--delay", type=float, default=0.5, help="Higher value means slower")
 
     args = parser.parse_args()
 
