@@ -40,5 +40,5 @@ setup(
                              "vendor/jsonschema/schemas/*.json"]
     },
     entry_points={},
-    install_requires=["pyblish>=1.0.13"]
+    install_requires=["pyblish>=1.0.15"]
 )
