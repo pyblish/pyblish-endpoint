@@ -1,14 +1,13 @@
 import logging
 
 import pyblish.api
-
-from .. import service
+import pyblish_endpoint.service
 
 
 log = logging.getLogger("endpoint")
 
 
-class TestService(service.EndpointService):
+class TestService(pyblish_endpoint.service.EndpointService):
     """Service for testing"""
     def init(self):
         self.reset()

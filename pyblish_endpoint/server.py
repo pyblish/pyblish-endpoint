@@ -112,7 +112,6 @@ def start_debug_server(port, delay=0.5, **kwargs):
 
     Service = mocking.MockService
     Service.SLEEP_DURATION = delay
-    Service.PERFORMANCE = Service.FAST
     service_mod.register_service(Service)
 
     # Expose vendor libraries to external Python process
