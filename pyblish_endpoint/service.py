@@ -21,6 +21,7 @@ import os
 import sys
 import time
 import json
+import copy
 import getpass
 import logging
 import traceback
@@ -59,10 +60,32 @@ class State(dict):
 
         self.clear()
 
-        state = format_state({
-            "plugins": self.service.plugins,
-            "context": self.service.context
-        })
+        plugins = self.service.plugins
+        context = self.service.context
+
+        state = format_state({"plugins": plugins,
+                              "context": context})
+
+        # Bridge instances and plug-ins
+        for plugin in state["plugins"]:
+            compatible = pyblish.api.instances_by_plugin(
+                instances=context,
+                plugin=plugins[plugin["name"]])
+
+            compatible = [str(i) for i in compatible]
+            plugin["data"]["compatibleInstances"] = compatible
+
+        for instance in state["context"]["children"]:
+            compatible = list()
+            family = instance["data"].get("family")
+
+            if family:
+                compatible = pyblish.api.plugins_by_family(
+                    plugins=plugins,
+                    family=family)
+                compatible = [getattr(i, "id") for i in compatible]
+
+            instance["data"]["compatiblePlugins"] = compatible
 
         super(State, self).update(state)
 
@@ -174,6 +197,12 @@ class EndpointService(object):
             self.context.set_data(key, value)
 
     def process(self, plugin_id, instance_id=None):
+        return self._process_pair("process", plugin_id, instance_id)
+
+    def repair(self, plugin_id, instance_id):
+        return self._process_pair("repair", plugin_id, instance_id)
+
+    def _process_pair(self, mode, plugin_id, instance_id=None):
         """Process `instance_id` with `plugin_id`
 
         Arguments:
@@ -183,13 +212,29 @@ class EndpointService(object):
 
         """
 
+        try:
+            Plugin = self.plugins[plugin_id]
+        except KeyError as e:
+            extract_traceback(e)
+
+            result = {
+                "success": False,
+                "plugin": plugin_id,
+                "instance": instance_id or "Context",
+                "error": format_error(e),
+                "records": list(),
+                "duration": 0
+            }
+
+            self.store_results_in_context(result)
+
+            return result
+
         records = list()
         handler = MessageHandler(records)
 
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
-
-        Plugin = self.plugins[plugin_id]
 
         __time = time.time()
 
@@ -197,41 +242,27 @@ class EndpointService(object):
         formatted_error = None
 
         if instance_id is None:
-            try:
-                Plugin().process_context(self.context)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
-
+            item = self.context
+            processor = getattr(Plugin(), "%s_context" % mode)
         else:
+            item = self.context[instance_id]
+            processor = getattr(Plugin(), "%s_instance" % mode)
 
-            instance = self.context[instance_id]
-
-            try:
-                Plugin().process_instance(instance)
-            except Exception as error:
-                try:
-                    _, _, exc_tb = sys.exc_info()
-                    error.traceback = traceback.extract_tb(
-                        exc_tb)[-1]
-                except:
-                    pass
-
-                success = False
-                formatted_error = format_error(error)
+        try:
+            processor(item)
+        except Exception as error:
+            success = False
+            extract_traceback(error)
+            formatted_error = format_error(error)
 
         formatted_records = list()
         for record in records:
             formatted_records.append(format_record(record))
 
-        return {
+        # Restore balance to the world
+        root_logger.removeHandler(handler)
+
+        result = {
             "success": success,
             "plugin": plugin_id,
             "instance": instance_id or "Context",
@@ -240,23 +271,40 @@ class EndpointService(object):
             "duration": time.time() - __time
         }
 
+        self.store_results_in_context(result)
+
+        return result
+
+    def store_results_in_context(self, result):
+        results = self.context.data("results")
+        if results is None:
+            results = list()
+            self.context.set_data("results", results)
+
+        result = copy.deepcopy(result)
+        results.append(result)
+
 
 class MessageHandler(logging.Handler):
     def __init__(self, records, *args, **kwargs):
         # Not using super(), for compatibility with Python 2.6
         logging.Handler.__init__(self, *args, **kwargs)
-
         self.records = records
 
     def emit(self, record):
-        # Do not record server messages
-        # if record.name in ["werkzeug"]:
-        #     return
-
-        if record.levelno < logging.INFO:
-            return
-
         self.records.append(record)
+
+
+def extract_traceback(exception):
+    try:
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        exception.traceback = traceback.extract_tb(exc_traceback)[-1]
+
+    except:
+        pass
+
+    finally:
+        del(exc_type, exc_value, exc_traceback)
 
 
 def format_record(record):
@@ -285,7 +333,12 @@ def format_record(record):
 
     """
 
-    return record.__dict__
+    record = record.__dict__
+
+    # Humanise output and conform to Exceptions
+    record["message"] = record.pop("msg")
+
+    return record
 
 
 def format_error(error):
@@ -305,6 +358,14 @@ def format_error(error):
 
 
 def format_state(state):
+    """Bridge context with plug-ins
+
+    Attribute:
+        - compatibleInstances
+        - compatiblePlugins
+
+    """
+
     formatted = {
         "context": format_context(state["context"]),
         "plugins": format_plugins(state["plugins"])
@@ -450,7 +511,7 @@ def format_plugin(plugin, data=None):
             "order": plugin.order,
             "optional": plugin.optional,
             "doc": docstring,
-            "hasRepair": hasattr(plugin, "repair_instance"),
+            "hasRepair": False,
             "hasCompatible": False,
             "hosts": [],
             "families": [],
@@ -458,6 +519,8 @@ def format_plugin(plugin, data=None):
             "module": None,
             "canProcessContext": False,
             "canProcessInstance": False,
+            "canRepairInstance": False,
+            "canRepairContext": False
         }
     }
 
@@ -489,6 +552,22 @@ def format_plugin(plugin, data=None):
 
     if Superclass.process_instance != plugin.process_instance:
         formatted["data"]["canProcessInstance"] = True
+
+    # TODO(marcus): As of Pyblish 1.0.15, this try/except block
+    # is no longer necessary.
+    try:
+        if Superclass.repair_instance != plugin.repair_instance:
+            formatted["data"]["canRepairInstance"] = True
+            formatted["data"]["hasRepair"] = True
+    except AttributeError:
+        pass
+
+    try:
+        if Superclass.repair_context != plugin.repair_context:
+            formatted["data"]["canRepairContext"] = True
+            formatted["data"]["hasRepair"] = True
+    except AttributeError:
+        pass
 
     return formatted
 

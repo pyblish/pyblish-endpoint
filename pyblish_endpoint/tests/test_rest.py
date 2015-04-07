@@ -19,11 +19,25 @@ service.register_service(lib.TestService, force=True)
 
 # Helper functions
 
-def setup():
-    pass
+def _setup():
+    response = request("POST", "/state")
+    check_content_type(response)
+    check_status(response, 200)
+    data = load_data(response)
+    assert "ok" in data
+
+    # Select
+    for plugin in lib.PLUGINS:
+        if plugin.order < 1:
+            response = request("PUT", "/state", data={
+                "instance": None,
+                "plugin": plugin.__name__
+            })
+            check_content_type(response)
+            check_status(response, 200)
 
 
-def teardown():
+def _teardown():
     response = request("DELETE", "/state")
     check_content_type(response)
     check_status(response, 200)
@@ -53,9 +67,9 @@ def request(verb, address, *args, **kwargs):
     return func("/pyblish/v1" + address, *args, **kwargs)
 
 
-@with_setup(setup, teardown)
 def test_get_state():
     """Getting state does not change state"""
+    response = request("DELETE", "/state")
 
     # Getting state, before posting, yields an empty state
     response = request("GET", "/state")
@@ -74,7 +88,7 @@ def test_get_state():
         "plugins": []
     }
 
-    assert_equal(state, empty_state)
+    assert_false(state["plugins"])
 
     # Posting for the first time yields a *new* state
     response = request("POST", "/state")
@@ -96,16 +110,9 @@ def test_get_state():
     assert_not_equal(state, empty_state)
 
 
-@with_setup(setup, teardown)
+@with_setup(_setup, _teardown)
 def test_post_state():
     """Posting state updates it"""
-
-    # Initialise state
-    response = request("POST", "/state")
-    check_content_type(response)
-    check_status(response, 200)
-    data = load_data(response)
-
     # Make a change
     _instance = lib.INSTANCES[1]
 
@@ -160,14 +167,9 @@ def test_post_state():
     assert_equal(instance["data"]["publish"], changed_value)
 
 
-@with_setup(setup, teardown)
+@with_setup(_setup, _teardown)
 def test_put_state():
     """PUT to /state processes the given pair"""
-
-    # Initialise state
-    response = request("POST", "/state")
-    check_content_type(response)
-    check_status(response, 200)
 
     _instance = lib.INSTANCES[1]
     _plugin = lib.PLUGINS[0].__name__

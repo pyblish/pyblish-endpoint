@@ -50,6 +50,11 @@
                         "family": {
                             "description": "Family of instance",
                             "type": "string"
+                        },
+                        "compatibleInstances": {
+                            "description": "Array of compatible plug-ins",
+                            "type": "array",
+                            "items": {"type": "string"}
                         }
                         
                     }
@@ -76,6 +81,9 @@
                         "families": {
                             "type": "array",
                             "items": {"type": "string"}
+                        },
+                        "order": {
+                            "type": "number"
                         },
                         "version": {
                             "type": "array",
@@ -108,6 +116,19 @@
                         "canProcessInstance": {
                             "description": "Whether or not the plug-in has implemented Instance processing",
                             "type": "boolean"
+                        },
+                        "canRepairInstance": {
+                            "description": "Whether or not the plug-in has implemented Instance repair",
+                            "type": "boolean"
+                        },
+                        "canRepairContext": {
+                            "description": "Whether or not the plug-in has implemented Instance repair",
+                            "type": "boolean"
+                        },
+                        "compatibleInstances": {
+                            "description": "Array of compatible instances",
+                            "type": "array",
+                            "items": {"type": "string"}
                         }
                     }
                 }

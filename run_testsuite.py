@@ -20,5 +20,5 @@ sys.modules['PyQt5'] = mock.Mock()
 
 if __name__ == '__main__':
     argv = sys.argv[:]
-    argv.extend(['--exclude=vendor', '--with-doctest'])
+    argv.extend(['--exclude=vendor', '--with-doctest', '--verbose'])
     nose.main(argv=argv)
