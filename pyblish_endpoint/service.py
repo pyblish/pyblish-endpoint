@@ -146,7 +146,7 @@ class Plugins(list):
 class Context(pyblish.api.Context):
     def __getitem__(self, index):
         if isinstance(index, int):
-            return super(Plugins, self).__getitem__(index)
+            return super(Context, self).__getitem__(index)
 
         for item in self:
             if item.name == index:
