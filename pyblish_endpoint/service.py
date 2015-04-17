@@ -5,15 +5,9 @@ In order to protect Endpoint from the internals or both Pyblish
 and each host application, the service acts as a layer inbetween
 the two.
 
-Users are encouraged to subclass :class:`EndpointService` and
-implement a minimum amount of features along with optionals.
-
-Mandatory features are marked as being abstractmethods, whereas
-optional features are not.
-
-Optional features are, as the name implies, not necessary for
-overall operation but may provide additional feedback or features
-to users.
+Users are meant to subclass :class:`EndpointService` in order to
+implement support for clients; such as wrapping non-threadsafe calls
+in a host-specific wrapper, such as maya.utils.executeInMainThreadWithResults
 
 """
 
@@ -236,8 +230,6 @@ class EndpointService(object):
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
 
-        __time = time.time()
-
         success = True
         formatted_error = None
 
@@ -248,12 +240,16 @@ class EndpointService(object):
             item = self.context[instance_id]
             processor = getattr(Plugin(), "%s_instance" % mode)
 
+        __start = time.time()
+
         try:
             processor(item)
         except Exception as error:
             success = False
             extract_traceback(error)
             formatted_error = format_error(error)
+
+        __end = time.time()
 
         formatted_records = list()
         for record in records:
@@ -268,7 +264,7 @@ class EndpointService(object):
             "instance": instance_id or "Context",
             "error": formatted_error,
             "records": formatted_records,
-            "duration": time.time() - __time
+            "duration": (__end - __start) * 1000  # ms
         }
 
         self.store_results_in_context(result)
