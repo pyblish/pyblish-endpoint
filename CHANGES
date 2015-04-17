@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Version 1.1.9
+-------------
+
+- Timing more accurate and changed from seconds to milliseconds
+- Improved test-suite
+
 Version 1.1.8
 -------------
 

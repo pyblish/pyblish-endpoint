@@ -22,7 +22,7 @@
             "type": "string"
         },
         "duration": {
-            "description": "Time taken to process",
+            "description": "Time in milliseconds taken to process a pair",
             "type": "number"
         },
         "error": {
