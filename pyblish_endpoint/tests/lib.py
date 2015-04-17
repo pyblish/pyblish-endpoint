@@ -64,13 +64,12 @@ class SelectInstances(pyblish.api.Selector):
             if name == "Peter01":
                 instance.set_data("publish", False)
                 instance.set_data("family", "napoleon.asset.rig")
-            # else:
-            #     instance.set_data("family", "napoleon.animation.cache")
 
             for node in ["node1", "node2", "node3"]:
                 instance.append(node)
 
 
+@pyblish.api.log
 class SelectInstancesFailure(pyblish.api.Selector):
     """Select some instances, but fail before adding anything to the context.
 
@@ -85,6 +84,7 @@ class SelectInstancesFailure(pyblish.api.Selector):
         raise pyblish.api.SelectionError("I was programmed to fail")
 
 
+@pyblish.api.log
 class SelectInstanceAndProcess(pyblish.api.Selector):
     """Select an instance, and also process it.
 
@@ -254,6 +254,22 @@ class ValidateWithRepairFailure(pyblish.api.Validator):
 
 
 @pyblish.api.log
+class ValidateWithRepairContext(pyblish.api.Validator):
+    """A validator with repair functionality that fails"""
+    hosts = ["*"]
+    version = (0, 0, 1)
+    optional = True
+
+    def process_context(self, context):
+        raise pyblish.api.ValidationError(
+            "Could not validate context, try repairing it")
+
+    def repair_context(self, context):
+        self.log.info("Attempting to repair..")
+        raise pyblish.api.ValidationError("Could not repair")
+
+
+@pyblish.api.log
 class ExtractAsMa(pyblish.api.Extractor):
     """Extract contents of each instance into .ma
 
@@ -352,7 +368,7 @@ INSTANCES = [
 
 PLUGINS[:] = [
     SelectInstances,
-    # SelectInstancesFailure,
+    SelectInstancesFailure,
     SelectInstanceAndProcess,
     ValidateFailureMock,
     ValidateNamespace,
@@ -364,6 +380,7 @@ PLUGINS[:] = [
     Validator3,
     ValidateWithRepair,
     ValidateWithRepairFailure,
+    ValidateWithRepairContext,
     ExtractAsMa,
     ConformAsset,
 ]
