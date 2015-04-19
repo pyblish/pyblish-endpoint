@@ -9,23 +9,13 @@ log = logging.getLogger("endpoint")
 
 
 class MockService(tests.lib.TestService):
-    """Service for testing"""
-
     SLEEP_DURATION = 0
-
-    @classmethod
-    def sleep(cls):
-        duration = random.random() * cls.SLEEP_DURATION
-        if duration:
-            log.info("Pretending it takes %s ms "
-                     "to complete.." % duration * 1000)
-
-            time.sleep(duration)
 
 
 def sleeper(func):
     def wrapper(*args, **kwargs):
-        MockService.sleep()
+        duration = random.random() * MockService.SLEEP_DURATION
+        time.sleep(duration)
         return func(*args, **kwargs)
     return wrapper
 
